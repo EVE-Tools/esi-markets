@@ -1,0 +1,13 @@
+pipeline:
+  build:
+    image: rustlang/rust:nightly
+    commands:
+      - cargo build --release
+
+  docker:
+    image: plugins/docker
+    repo: evetools/esi-markets
+    secrets: [ docker_username, docker_password ]
+    tag:
+      - latest
+      - ${DRONE_COMMIT_SHA:0:8}

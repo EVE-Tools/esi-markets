@@ -1,0 +1,5 @@
+/target/*
+!/target/x86_64-unknown-linux-musl/release/esi-markets
+!/target/release/esi-markets
+/cache/*
+*.rs.bk

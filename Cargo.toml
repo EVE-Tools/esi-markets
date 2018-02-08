@@ -1,0 +1,45 @@
+[package]
+name = "esi-markets"
+version = "0.1.0"
+authors = ["Sebastian <info@zweizeichen.org>"]
+
+[dependencies]
+bincode = "0.9"
+bytes = "0.4"
+chan = "0.1"
+chrono = "0.4"
+error-chain = "0.11"
+fern = "0.4"
+# TODO: Update
+flate2 = "0.2"
+fnv = "1.0"
+log = "0.3"
+parking_lot = "0.5"
+prost = "0.3"
+prost-derive = "0.3"
+prost-types = "0.3"
+rand = "0.4"
+reqwest = "0.8"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+time = "0.1"
+
+#
+# gRPC crates
+#
+
+futures = "0.1"
+http = "0.1"
+tokio-core = "0.1"
+tower = { git = "https://github.com/tower-rs/tower" }
+tower-h2 = { git = "https://github.com/tower-rs/tower-h2" }
+tower-http = { git = "https://github.com/tower-rs/tower-http" }
+tower-grpc = { git = "https://github.com/tower-rs/tower-grpc" }
+
+[build-dependencies]
+tower-grpc-build = { git = "https://github.com/tower-rs/tower-grpc" }
+
+[dependencies.ctrlc]
+version = "3.0"
+features = ["termination"]
