@@ -113,7 +113,7 @@ impl Store {
             .open(TEMP_STORE_PATH)?;
 
         let writer = BufWriter::new(store_file);
-        let mut deflate_writer = DeflateEncoder::new(writer, Compression::Fast);
+        let mut deflate_writer = DeflateEncoder::new(writer, Compression::fast());
 
         let res = serialize_into(&mut deflate_writer, &self.0.read().orders);
 
