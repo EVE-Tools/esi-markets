@@ -327,7 +327,7 @@ pub mod server {
 
         pub mod methods {
             use ::tower_grpc::codegen::server::*;
-            use super::super::{EsiMarkets, GetOrderRequest, GetOrdersResponse, GetRegionRequest, GetTypeRequest, GetRegionTypeRequest, GetRegionTypeUpdateStreamResponse, Empty};
+            use super::super::{EsiMarkets, GetOrderRequest, GetOrdersResponse, GetRegionRequest, GetTypeRequest, GetRegionTypeRequest, Empty};
 
             pub struct GetOrder<T>(pub T);
 

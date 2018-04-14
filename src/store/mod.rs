@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time;
 
-use bincode::{serialize_into, deserialize_from, Infinite};
+use bincode::{serialize_into, deserialize_from};
 use chrono::prelude::*;
 use flate2::Compression;
 use flate2::write::{DeflateEncoder};
@@ -115,7 +115,7 @@ impl Store {
         let writer = BufWriter::new(store_file);
         let mut deflate_writer = DeflateEncoder::new(writer, Compression::Fast);
 
-        let res = serialize_into(&mut deflate_writer, &self.0.read().orders, Infinite);
+        let res = serialize_into(&mut deflate_writer, &self.0.read().orders);
 
         if res.is_ok() {
             fs::remove_file(STORE_PATH)?;
@@ -140,7 +140,7 @@ impl Store {
         let reader = BufReader::new(store_file);
         let mut deflate_reader = DeflateDecoder::new(reader);
 
-        let store_result = deserialize_from(&mut deflate_reader, Infinite);
+        let store_result = deserialize_from(&mut deflate_reader);
 
         if store_result.is_ok() {
             let mut lock = self.0.write();

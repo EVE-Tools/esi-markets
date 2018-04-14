@@ -63,8 +63,8 @@ fn run() -> Result<()> {
                 message
             ))
         })
-        .level(log::LogLevelFilter::Warn)
-        .level_for("esi_markets", log::LogLevelFilter::Debug)
+        .level(log::LevelFilter::Warn)
+        .level_for("esi_markets", log::LevelFilter::Debug)
         .chain(std::io::stdout())
         .apply()?;
 

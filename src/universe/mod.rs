@@ -3,7 +3,7 @@ use std::io::{Read, BufReader, BufWriter};
 use std::sync::Arc;
 use std::thread;
 
-use bincode::{serialize_into, deserialize_from, Infinite};
+use bincode::{serialize_into, deserialize_from};
 use chan;
 use flate2::Compression;
 use flate2::write::{DeflateEncoder};
@@ -207,7 +207,7 @@ impl Universe {
         let reader = BufReader::new(blacklist_file);
         let mut deflate_reader = DeflateDecoder::new(reader);
 
-        let blacklist_result = deserialize_from(&mut deflate_reader, Infinite);
+        let blacklist_result = deserialize_from(&mut deflate_reader);
 
         if blacklist_result.is_ok() {
             let list: FnvHashSet<LocationID> = blacklist_result?;
@@ -231,7 +231,7 @@ impl Universe {
         let writer = BufWriter::new(blacklist_file);
         let mut deflate_writer = DeflateEncoder::new(writer, Compression::Fast);
 
-        let res = serialize_into(&mut deflate_writer, &self.0.read().structure_blacklist, Infinite);
+        let res = serialize_into(&mut deflate_writer, &self.0.read().structure_blacklist);
 
         if res.is_ok() {
             debug!("Successfully wrote blacklist to disk.");
