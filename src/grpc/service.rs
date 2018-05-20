@@ -331,13 +331,17 @@ pub mod server {
 
             pub struct GetOrder<T>(pub T);
 
-            impl<T> tower::ReadyService for GetOrder<T>
+            impl<T> tower::Service for GetOrder<T>
             where T: EsiMarkets,
             {
                 type Request = grpc::Request<GetOrderRequest>;
                 type Response = grpc::Response<GetOrdersResponse>;
                 type Error = grpc::Error;
                 type Future = T::GetOrderFuture;
+
+                fn poll_ready(&mut self) -> futures::Poll<(), Self::Error> {
+                    Ok(futures::Async::Ready(()))
+                }
 
                 fn call(&mut self, request: Self::Request) -> Self::Future {
                     self.0.get_order(request)
@@ -346,13 +350,17 @@ pub mod server {
 
             pub struct GetRegion<T>(pub T);
 
-            impl<T> tower::ReadyService for GetRegion<T>
+            impl<T> tower::Service for GetRegion<T>
             where T: EsiMarkets,
             {
                 type Request = grpc::Request<GetRegionRequest>;
                 type Response = grpc::Response<GetOrdersResponse>;
                 type Error = grpc::Error;
                 type Future = T::GetRegionFuture;
+
+                fn poll_ready(&mut self) -> futures::Poll<(), Self::Error> {
+                    Ok(futures::Async::Ready(()))
+                }
 
                 fn call(&mut self, request: Self::Request) -> Self::Future {
                     self.0.get_region(request)
@@ -361,13 +369,17 @@ pub mod server {
 
             pub struct GetType<T>(pub T);
 
-            impl<T> tower::ReadyService for GetType<T>
+            impl<T> tower::Service for GetType<T>
             where T: EsiMarkets,
             {
                 type Request = grpc::Request<GetTypeRequest>;
                 type Response = grpc::Response<GetOrdersResponse>;
                 type Error = grpc::Error;
                 type Future = T::GetTypeFuture;
+
+                fn poll_ready(&mut self) -> futures::Poll<(), Self::Error> {
+                    Ok(futures::Async::Ready(()))
+                }
 
                 fn call(&mut self, request: Self::Request) -> Self::Future {
                     self.0.get_type(request)
@@ -376,13 +388,17 @@ pub mod server {
 
             pub struct GetRegionType<T>(pub T);
 
-            impl<T> tower::ReadyService for GetRegionType<T>
+            impl<T> tower::Service for GetRegionType<T>
             where T: EsiMarkets,
             {
                 type Request = grpc::Request<GetRegionTypeRequest>;
                 type Response = grpc::Response<GetOrdersResponse>;
                 type Error = grpc::Error;
                 type Future = T::GetRegionTypeFuture;
+
+                fn poll_ready(&mut self) -> futures::Poll<(), Self::Error> {
+                    Ok(futures::Async::Ready(()))
+                }
 
                 fn call(&mut self, request: Self::Request) -> Self::Future {
                     self.0.get_region_type(request)
@@ -391,13 +407,17 @@ pub mod server {
 
             pub struct GetRegionTypeUpdateStream<T>(pub T);
 
-            impl<T> tower::ReadyService for GetRegionTypeUpdateStream<T>
+            impl<T> tower::Service for GetRegionTypeUpdateStream<T>
             where T: EsiMarkets,
             {
                 type Request = grpc::Request<Empty>;
                 type Response = grpc::Response<T::GetRegionTypeUpdateStreamStream>;
                 type Error = grpc::Error;
                 type Future = T::GetRegionTypeUpdateStreamFuture;
+
+                fn poll_ready(&mut self) -> futures::Poll<(), Self::Error> {
+                    Ok(futures::Async::Ready(()))
+                }
 
                 fn call(&mut self, request: Self::Request) -> Self::Future {
                     self.0.get_region_type_update_stream(request)

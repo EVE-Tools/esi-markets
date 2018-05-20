@@ -27,7 +27,7 @@ extern crate serde;
 extern crate serde_json;
 extern crate time;
 extern crate tokio_core;
-extern crate tower;
+extern crate tower_service;
 extern crate tower_grpc;
 extern crate tower_h2;
 
