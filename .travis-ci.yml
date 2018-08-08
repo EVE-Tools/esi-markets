@@ -1,0 +1,13 @@
+language: rust
+cache:
+  directories:
+    - /cargo
+    - /target
+sudo: required
+dist: trusty
+os: 
+  - linux
+services:
+  - docker
+script:
+  - docker build . -t evetools/esi-markets:travis -v "/target:/target" -v "/cargo/git:/usr/local/cargo/git" -v "/cargo/registry:/usr/local/cargo/registry"
