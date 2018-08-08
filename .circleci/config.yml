@@ -1,0 +1,12 @@
+version: 2
+jobs:
+  build:
+    working_directory: /app
+    docker:
+      - image: docker:stable-git
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+        name: Build image
+        command: docker build . -t evetools/esi-markets:circle
