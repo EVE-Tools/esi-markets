@@ -1,5 +1,5 @@
 # ESI Markets
-[![Docker Image](https://images.microbadger.com/badges/image/evetools/esi-markets.svg)](https://microbadger.com/images/evetools/esi-markets)
+[![Build Status](https://semaphoreci.com/api/v1/zweizeichen/esi-markets/branches/master/badge.svg)](https://semaphoreci.com/zweizeichen/esi-markets) [![Docker Image](https://images.microbadger.com/badges/image/evetools/esi-markets.svg)](https://microbadger.com/images/evetools/esi-markets)
 
 This service for [Element43](https://element-43.com) keeps an in-memory representation of EVE's orderbook which can be queried via gRPC.
 
@@ -15,7 +15,6 @@ Either use the prebuilt Docker images and pass the appropriate env vars (see bel
 * Run `cargo run --release` to build and run the release version
 
 ## Deployment Info
-Builds and releases are handled by Drone.
 
 Environment Variable | Default | Description
 --- | --- | ---
