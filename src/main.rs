@@ -28,7 +28,7 @@ extern crate tower_grpc;
 extern crate tower_h2;
 
 #[macro_use]
-extern crate chan;
+extern crate crossbeam_channel;
 
 #[macro_use]
 extern crate log;

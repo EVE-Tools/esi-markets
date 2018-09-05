@@ -9,8 +9,9 @@ use std::process;
 use std::thread;
 use std::time;
 use std::time::Instant;
+use std::time::Duration as StandardDuration;
 
-use chan;
+use crossbeam_channel as channel;
 use ctrlc;
 use fnv::FnvHashMap;
 use super::esi::types::*;
@@ -82,13 +83,21 @@ fn start_schedule_loop(client: esi::Client, uni: universe::Universe, order_store
             schedule.insert(region, random_time);
         }
 
-        let region_update = chan::tick_ms(60 * 60 * 1_000); // hourly (backend refreshes daily)
-        let run_regions = chan::tick_ms(200); // Five times per second
-        let (send_reschedule, receive_reschedule) = chan::async::<(RegionID, DateTime<Utc>)>();
+        // Convert number to milliseconds
+        let milliseconds = |milliseconds| StandardDuration::from_millis(milliseconds);
+
+        // Define tick intervals
+        let hourly = milliseconds(60 * 60 * 1_000);
+        let five_times_per_second = milliseconds(200);
+
+        // Create channels
+        let region_update = channel::tick(hourly); // hourly (backend refreshes daily)
+        let run_regions = channel::tick(five_times_per_second);
+        let (send_reschedule, receive_reschedule) = channel::unbounded::<(RegionID, DateTime<Utc>)>();
 
         loop {
-            chan_select! {
-                region_update.recv() => { 
+            select! {
+                recv(region_update) => { 
                     let regions = uni.get_market_regions();
                     for region in regions {
                         let random: i64 = rng.gen_range(0, 300);
@@ -96,7 +105,7 @@ fn start_schedule_loop(client: esi::Client, uni: universe::Universe, order_store
                         schedule.entry(region).or_insert(random_time);
                     } 
                 },
-                run_regions.recv() => { 
+                recv(run_regions) => { 
                     let now = Utc::now();
                     let mut fetch: Vec<RegionID> = Vec::new();
 
@@ -113,7 +122,7 @@ fn start_schedule_loop(client: esi::Client, uni: universe::Universe, order_store
                         update_region(region, client.clone(), uni.clone(), order_store.clone(), send_reschedule.clone());
                     } 
                 },
-                receive_reschedule.recv() -> data => {
+                recv(receive_reschedule, data) => {
                     if data.is_some() {
                         let (region_id, run_at) = data.unwrap();
                         schedule.insert(region_id, run_at);
@@ -127,7 +136,7 @@ fn start_schedule_loop(client: esi::Client, uni: universe::Universe, order_store
 /// Download and store a region's market
 /// It works like this (for regions/structures):
 /// Spawn thread per region -> get metadata -> spawn thread per page
-fn update_region(region_id: RegionID, client: esi::Client, uni: universe::Universe, mut order_store: store::Store, reschedule_channel: chan::Sender<(RegionID, DateTime<Utc>)>) -> thread::JoinHandle<Result<store::UpdateResult>> {
+fn update_region(region_id: RegionID, client: esi::Client, uni: universe::Universe, mut order_store: store::Store, reschedule_channel: channel::Sender<(RegionID, DateTime<Utc>)>) -> thread::JoinHandle<Result<store::UpdateResult>> {
     thread::spawn(move || {
         let before_download = Instant::now();
         let orders = match download_region(region_id, client, uni, reschedule_channel) {
@@ -159,7 +168,7 @@ fn update_region(region_id: RegionID, client: esi::Client, uni: universe::Univer
 }
 
 /// Download market data of a region
-fn download_region(region_id: RegionID, client: esi::Client, uni: universe::Universe, reschedule_channel: chan::Sender<(RegionID, DateTime<Utc>)>) -> Result<store::TaggedOrderVec> {
+fn download_region(region_id: RegionID, client: esi::Client, uni: universe::Universe, reschedule_channel: channel::Sender<(RegionID, DateTime<Utc>)>) -> Result<store::TaggedOrderVec> {
     // Collect thread's handles for later joins
     // It needs mutable access to the client because of auth and to uni because of the blacklists
     let structure_handle = download_region_structures(region_id, client.clone(), uni);
@@ -183,7 +192,7 @@ fn download_region(region_id: RegionID, client: esi::Client, uni: universe::Univ
 }
 
 /// Download region metadata and spawn page threads
-fn download_region_market(region_id: RegionID, client: esi::Client, reschedule_channel: chan::Sender<(RegionID, DateTime<Utc>)>) -> thread::JoinHandle<Result<store::TaggedOrderVec>> {
+fn download_region_market(region_id: RegionID, client: esi::Client, reschedule_channel: channel::Sender<(RegionID, DateTime<Utc>)>) -> thread::JoinHandle<Result<store::TaggedOrderVec>> {
     thread::spawn(move || {
         // Todo: Retry
         let metadata = client.get_orders_metadata(region_id)?;

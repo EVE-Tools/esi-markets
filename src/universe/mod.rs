@@ -2,9 +2,10 @@ use std::fs::OpenOptions;
 use std::io::{Read, BufReader, BufWriter};
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 use bincode::{serialize_into, deserialize_from};
-use chan;
+use crossbeam_channel as channel;
 use flate2::Compression;
 use flate2::write::{DeflateEncoder};
 use flate2::bufread::{DeflateDecoder};
@@ -63,14 +64,21 @@ impl Universe {
         let clone = self.clone();
 
         thread::spawn(move || {
-            let region_update = chan::tick_ms(24 * 60 * 60 * 1_000); // daily
-            let blacklist_reset = chan::tick_ms(24 * 60 * 60 * 1_000); // daily
-            let structure_update = chan::tick_ms(60 * 60 * 1_000); // hourly
-            let save_blacklist = chan::tick_ms(5 * 60 * 1_000); // every 5 minutes
+            // Convert number to milliseconds
+            let milliseconds = |milliseconds| Duration::from_millis(milliseconds);
+            let daily = milliseconds(24 * 60 * 60 * 1_000);
+            let hourly = milliseconds(60 * 60 * 1_000);
+            let five_minutes = milliseconds(5 * 60 * 1_000);
+
+            // Create channels
+            let region_update = channel::tick(daily);
+            let blacklist_reset = channel::tick(daily);
+            let structure_update = channel::tick(hourly);
+            let save_blacklist = channel::tick(five_minutes);
 
             loop {
-                chan_select! {
-                    region_update.recv() => {
+                select! {
+                    recv(region_update) => {
                         let clone = clone.clone();
                         thread::spawn(move || {
                             match clone.load_regions() {
@@ -81,13 +89,13 @@ impl Universe {
                             }
                         });
                     },
-                    blacklist_reset.recv() => { 
+                    recv(blacklist_reset) => { 
                         let clone = clone.clone();
                         thread::spawn(move || {
                             clone.clear_blacklist();
                         });
                     },
-                    structure_update.recv() => {
+                    recv(structure_update) => {
                         let clone = clone.clone();
                         thread::spawn(move || {
                             match clone.load_structures() {
@@ -98,7 +106,7 @@ impl Universe {
                             }
                         });
                     },
-                    save_blacklist.recv() => {
+                    recv(save_blacklist) => {
                         let clone = clone.clone();
                         thread::spawn(move || {
                             match clone.persist_blacklist() {
