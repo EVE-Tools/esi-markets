@@ -246,7 +246,7 @@ impl Client {
         let status_code = resp.status().as_u16();
 
         // Throttle request
-        if limit_present || status_code == 420 || errors_remaining < 3 {
+        if limit_present || status_code == 420 || errors_remaining < 10 {
             self.0.write().locked_until = reset_window_at;
         }
 
@@ -255,7 +255,7 @@ impl Client {
             bail!(errors::ErrorKind::ESIErrorLimitError("Request blocked by ESI: Blocking header present. Throttling requests.".to_owned()));
         } else if status_code == 420 {
             bail!(errors::ErrorKind::ESIErrorLimitError("Request blocked by ESI: Server returned code 420. Throttling requests.".to_owned()));
-        } else if errors_remaining < 3 {
+        } else if errors_remaining < 10 {
             warn!("Remaining ESI error limit below watermark: Throttling requests.");
         }
 
