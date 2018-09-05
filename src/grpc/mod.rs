@@ -70,8 +70,6 @@ impl server::EsiMarkets for MarketServer {
 }
 
 pub fn run_server(store: store::Store, grpc_host: String) {
-    let _ = ::env_logger::init();
-
     let mut core = Core::new().unwrap();
     let reactor = core.handle();
 
