@@ -1,5 +1,3 @@
-#![feature(alloc_system, rustc_private)]
-
 mod app;
 mod config;
 mod esi;
@@ -8,12 +6,10 @@ mod store;
 mod universe;
 mod grpc;
 
-extern crate alloc_system;
 extern crate bincode;
 extern crate bytes;
 extern crate chrono;
 extern crate ctrlc;
-extern crate env_logger;
 extern crate fern;
 extern crate flate2;
 extern crate fnv;
@@ -36,6 +32,7 @@ extern crate chan;
 
 #[macro_use]
 extern crate log;
+extern crate env_logger;
 
 #[macro_use]
 extern crate error_chain;
