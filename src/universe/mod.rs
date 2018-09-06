@@ -130,8 +130,8 @@ impl Universe {
             .clone()
             .into_iter()
             .filter(|id|{
-                // These regions do not have a market
-                *id < 11_000_000 && *id != 10_000_004 && *id != 10_000_019
+                // These regions do not have a market or structures
+                *id != 10_000_004 && *id != 10_000_019
             })
             .collect::<Vec<RegionID>>()
     }
