@@ -6,6 +6,7 @@ use super::universe;
 use super::store;
 
 use std::process;
+use std::sync::Arc;
 use std::thread;
 use std::time;
 use std::time::Instant;
@@ -136,7 +137,7 @@ fn start_schedule_loop(client: esi::Client, uni: universe::Universe, order_store
 /// Download and store a region's market
 /// It works like this (for regions/structures):
 /// Spawn thread per region -> get metadata -> spawn thread per page
-fn update_region(region_id: RegionID, client: esi::Client, uni: universe::Universe, mut order_store: store::Store, reschedule_channel: channel::Sender<(RegionID, DateTime<Utc>)>) -> thread::JoinHandle<Result<store::UpdateResult>> {
+fn update_region(region_id: RegionID, client: esi::Client, uni: universe::Universe, mut order_store: store::Store, reschedule_channel: channel::Sender<(RegionID, DateTime<Utc>)>) -> thread::JoinHandle<Result<Arc<store::UpdateResult>>> {
     thread::spawn(move || {
         let before_download = Instant::now();
         let orders = match download_region(region_id, client, uni, reschedule_channel) {

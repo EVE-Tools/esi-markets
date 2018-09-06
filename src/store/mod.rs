@@ -16,7 +16,9 @@ use flate2::bufread::{DeflateDecoder};
 use fnv::FnvHasher;
 use fnv::FnvHashMap;
 use fnv::FnvHashSet;
-use parking_lot::{RwLock, RwLockWriteGuard};
+use futures::{Sink, Stream};
+use futures::sync::mpsc::{channel, Sender};
+use parking_lot::{Mutex, RwLock, RwLockWriteGuard};
 use prost::Message;
 use prost_types::Timestamp;
 
@@ -37,7 +39,7 @@ pub type OrderBlob = Vec<u8>;
 pub struct Store(Arc<RwLock<InnerStore>>);
 
 /// Result of an update operation.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct UpdateResult {
     pub is_first_run: bool,
     pub new: FnvHashSet<OrderID>,
@@ -53,7 +55,8 @@ struct InnerStore {
     orders: FnvHashMap<OrderID, StoreObject>,
     regions: FnvHashMap<RegionID, FnvHashSet<OrderID>>,
     types: FnvHashMap<TypeID, FnvHashSet<OrderID>>,
-    region_types: FnvHashMap<RegionType, FnvHashSet<OrderID>>
+    region_types: FnvHashMap<RegionType, FnvHashSet<OrderID>>,
+    update_results_streams: Arc<Mutex<Vec<Sender<Arc<UpdateResult>>>>>
 }
 
 /// Simple order + history
@@ -72,7 +75,8 @@ impl Store {
             orders: FnvHashMap::default(),
             regions: FnvHashMap::default(),
             types: FnvHashMap::default(),
-            region_types: FnvHashMap::default()
+            region_types: FnvHashMap::default(),
+            update_results_streams: Arc::new(Mutex::new(vec![]))
         };
 
         let retval = Store(Arc::new(RwLock::new(inner)));
@@ -163,7 +167,7 @@ impl Store {
     }
     
     /// Store multiple orders in the store. Update if existing
-    pub fn store_region(&mut self, region_id: &RegionID, orders: TaggedOrderVec) -> UpdateResult {
+    pub fn store_region(&mut self, region_id: &RegionID, orders: TaggedOrderVec) -> Arc<UpdateResult> {
         // Acquire write lock
         // Iterate over orders, serialize (protobuf, append seen_at field later) and hash (build StoreObjects) -> rayon
         //  Check if hash is present
@@ -250,14 +254,44 @@ impl Store {
         let (rt_closed, closed) = prune_region(&mut store, *region_id, &all_oids);
         region_types.extend(rt_closed.iter());
 
-        UpdateResult{
+        // Push result to stream and return
+        let update_result = Arc::new(UpdateResult{
             is_first_run,
             new,
             updated,
             unaffected,
             closed,
             region_types
-        }
+        });
+
+        let mut streams = store.update_results_streams.lock();
+        streams.drain_filter(|stream| {
+            match stream.try_send(update_result.clone()) {
+                Ok(()) => false,
+                Err(ref error) if error.is_disconnected() => {
+                    debug!("Result stream client disconnected.");
+                    true
+                },
+                Err(ref error) if error.is_full() => {
+                    warn!("Closing result stream due to backpressured client.");
+
+                    // Close backpressured stream as consumer is not able to keep up
+                    let close_result = stream.close();
+                    
+                    if close_result.is_err() {
+                        error!("Error while closing result stream: {}", close_result.unwrap_err().to_string());
+                    }
+
+                    true
+                },
+                Err(error) => {
+                    error!("Unknown stream error while trying to send update result: {}", error.to_string());
+                    true
+                },
+            }
+        });
+
+        update_result
     }
 
     /// Get order's history
@@ -356,6 +390,19 @@ impl Store {
         }
 
         orders
+    }
+
+    /// Get a new future stream containing updateresults
+    pub fn get_result_stream(&self) -> Box<Stream<Item = Arc<UpdateResult>, Error = ()>> {
+        let store = self.0.write();
+        let mut streams = store.update_results_streams.lock();
+
+        debug!("Result stream client connected. Now there are {} active clients.", streams.len()+1);
+
+        let (sender, receiver) = channel::<Arc<UpdateResult>>(10);
+        streams.push(sender);
+        
+        return Box::new(receiver);
     }
 }
 

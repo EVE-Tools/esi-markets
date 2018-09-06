@@ -1,3 +1,5 @@
+#![feature(drain_filter)]
+
 mod app;
 mod config;
 mod esi;

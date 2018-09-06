@@ -1,6 +1,6 @@
 pub mod service;
 
-use self::service::{server, GetOrderRequest, GetRegionRequest, GetTypeRequest, GetRegionTypeRequest, GetOrdersResponse, GetRegionTypeUpdateStreamResponse, Empty, Orders};
+use self::service::{server, GetOrderRequest, GetRegionRequest, GetTypeRequest, GetRegionTypeRequest, GetOrdersResponse, GetRegionTypeUpdateStreamResponse, Empty, Orders, RegionType};
 use super::store;
 
 use futures::{future, Future, Stream};
@@ -59,13 +59,27 @@ impl server::EsiMarkets for MarketServer {
     }
 
     fn get_region_type_update_stream(&mut self, _request: Request<Empty>) -> Self::GetRegionTypeUpdateStreamFuture {
-        // FIXME: Implement
-        use futures::sync::mpsc;
+        // Get a new stream, take region_types as they become available and convert 
+        // the set of store types to a vec of the gRPC types. Then map errors and put stream into a box.
+        let stream = self.store.get_result_stream();
 
-        let (_, rx) = mpsc::channel(1);
-        let rx = rx.map_err(|_| unimplemented!());
+        let boxed_stream = Box::new(
+            stream.map(|result| {
+                GetRegionTypeUpdateStreamResponse {
+                    region_types: result.region_types
+                        .iter()
+                        .map(|(region_id, type_id)| {
+                            RegionType {
+                                region_id: *region_id, 
+                                type_id: *type_id 
+                            }
+                        })
+                        .collect(),
+                }
+            })
+            .map_err(|_| Error::from(())));
 
-        future::ok(Response::new(Box::new(rx)))
+        future::ok(Response::new(boxed_stream))
     }
 }
 
