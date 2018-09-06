@@ -66,7 +66,7 @@ pub fn run(config: config::Config) -> Result<()> {
     }).expect("Error setting shutdown handler!");
 
     // Launch gRPC server
-    grpc::run_server(order_store.clone(), config.grpc_host);
+    grpc::run_server(order_store.clone(), &config.grpc_host);
 
     Ok(())
 }
@@ -107,18 +107,18 @@ fn start_schedule_loop(client: esi::Client, uni: universe::Universe, order_store
                     } 
                 },
                 recv(run_regions) => { 
-                    let now = Utc::now();
+                    let now = &Utc::now();
                     let mut fetch: Vec<RegionID> = Vec::new();
 
                     for (region, time) in &schedule {
-                        if time < &now {
+                        if time < now {
                             fetch.push(*region);
                         }
                     }
 
                     for region in fetch {
                         // Run in 10 minutes unless re-scheduled by self
-                        schedule.insert(region, now + Duration::seconds(300));
+                        schedule.insert(region, *now + Duration::seconds(300));
 
                         update_region(region, client.clone(), uni.clone(), order_store.clone(), send_reschedule.clone());
                     } 
@@ -155,13 +155,13 @@ fn update_region(region_id: RegionID, client: esi::Client, uni: universe::Univer
         let after_download = Instant::now();
 
         let before_store = Instant::now();
-        let r = order_store.store_region(&region_id, orders);
+        let r = order_store.store_region(region_id, orders);
         let after_store = Instant::now();
 
         let dd = after_download.duration_since(before_download);
-        let download_time_ms = (dd.as_secs() * 1_000) + u64::from(dd.subsec_nanos() / 1_000_000);
+        let download_time_ms = (dd.as_secs() * 1_000) + u64::from(dd.subsec_millis());
         let sd = after_store.duration_since(before_store);
-        let store_time_ms = (sd.as_secs() * 1_000) + u64::from(sd.subsec_nanos() / 1_000_000);
+        let store_time_ms = (sd.as_secs() * 1_000) + u64::from(sd.subsec_millis());
         info!("{:8} - New: {:6}\tUpdated: {:6}\tClosed: {:6}\tUnaffected: {:6}\tAffected RegionTypes: {:6}\tDownload: {:5}ms\tStore: {:5}ms", region_id, r.new.len(), r.updated.len(), r.closed.len(), r.unaffected.len(), r.region_types.len(), download_time_ms, store_time_ms);
 
         Ok(r)
@@ -203,7 +203,7 @@ fn download_region_market(region_id: RegionID, client: esi::Client, reschedule_c
 
         // Spawn threads for pages
         let mut page_handles: Vec<thread::JoinHandle<Result<Vec<Order>>>> = Vec::new();
-        for page in 1..(metadata.pages+1) {
+        for page in 1..=metadata.pages {
             let handle = download_region_market_page(region_id, client.clone(), page);
             page_handles.push(handle);
         }
@@ -301,7 +301,7 @@ fn download_structure(structure_id: LocationID, mut client: esi::Client, uni: un
 
         // Spawn threads for pages
         let mut page_handles: Vec<thread::JoinHandle<Result<Vec<Order>>>> = Vec::new();
-        for page in 1..(metadata.pages+1) {
+        for page in 1..=metadata.pages {
             let handle = download_structure_page(structure_id, client.clone(), page);
             page_handles.push(handle);
         }

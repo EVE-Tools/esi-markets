@@ -141,9 +141,7 @@ impl Universe {
         let locations = self.0.read();
         let all_structures = locations.structures.get(&region_id);
 
-        if all_structures.is_none() {
-            return None;
-        }
+        all_structures?;
 
         Some(all_structures
             .unwrap()

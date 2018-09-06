@@ -167,7 +167,7 @@ impl Store {
     }
     
     /// Store multiple orders in the store. Update if existing
-    pub fn store_region(&mut self, region_id: &RegionID, orders: TaggedOrderVec) -> Arc<UpdateResult> {
+    pub fn store_region(&mut self, region_id: RegionID, orders: TaggedOrderVec) -> Arc<UpdateResult> {
         // Acquire write lock
         // Iterate over orders, serialize (protobuf, append seen_at field later) and hash (build StoreObjects) -> rayon
         //  Check if hash is present
@@ -188,14 +188,14 @@ impl Store {
 
         // Check if there are any orders for this region
         // if not, this is out first run and we avoid flooding new orders
-        let is_first_run = !store.regions.contains_key(region_id);
+        let is_first_run = !store.regions.contains_key(&region_id);
 
         for (mut order, last_modified) in orders {
             // Add to all list
             all_oids.insert(order.order_id);
 
             // Add region ID to order
-            order.region_id = *region_id;
+            order.region_id = region_id;
 
             // Encode without seen_at
             // TODO: parallelize encode/hash, add seen_at step using rayon?
@@ -220,7 +220,7 @@ impl Store {
 
                     // Update entry
                     updated.insert(order.order_id);
-                    region_types.insert((*region_id, order.type_id));
+                    region_types.insert((region_id, order.type_id));
                     entry.hash = hash;
                     entry.history.push(seen_blob.clone());
                     entry.order = seen_blob;
@@ -237,21 +237,21 @@ impl Store {
                 Message::encode(&order, &mut seen_blob).unwrap();
 
                 new.insert(order.order_id);
-                region_types.insert((*region_id, order.type_id));
+                region_types.insert((region_id, order.type_id));
 
                 store.orders.insert(order.order_id, StoreObject{
                     hash: hash,
                     history: vec![seen_blob.clone()],
                     order: seen_blob,
-                    region_id: *region_id,
+                    region_id: region_id,
                     type_id: order.type_id
                 });
 
-                add_to_indices(&mut store, order.order_id, order.type_id, *region_id);
+                add_to_indices(&mut store, order.order_id, order.type_id, region_id);
             }
         }
 
-        let (rt_closed, closed) = prune_region(&mut store, *region_id, &all_oids);
+        let (rt_closed, closed) = prune_region(&mut store, region_id, &all_oids);
         region_types.extend(rt_closed.iter());
 
         // Push result to stream and return
@@ -307,7 +307,7 @@ impl Store {
             return orders;
         }
 
-        for order in &store.orders.get(&order_id).unwrap().history {
+        for order in &store.orders[&order_id].history {
             orders.push(order.clone());
         }
 
@@ -325,7 +325,7 @@ impl Store {
 
         let mut orders: Vec<OrderBlob> = Vec::new();
 
-        if !oids_region.is_some() {
+        if oids_region.is_none() {
             return orders;
         }
 
@@ -351,7 +351,7 @@ impl Store {
 
         let mut orders: Vec<OrderBlob> = Vec::new();
 
-        if !oids_type.is_some() {
+        if oids_type.is_none() {
             return orders;
         }
 
@@ -377,7 +377,7 @@ impl Store {
 
         let mut orders: Vec<OrderBlob> = Vec::new();
 
-        if !oids_region_type.is_some() {
+        if oids_region_type.is_none() {
             return orders;
         }
 
@@ -402,7 +402,7 @@ impl Store {
         let (sender, receiver) = channel::<Arc<UpdateResult>>(10);
         streams.push(sender);
         
-        return Box::new(receiver);
+        Box::new(receiver)
     }
 }
 
