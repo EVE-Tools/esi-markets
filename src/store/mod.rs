@@ -400,20 +400,28 @@ fn prune_region(store: &mut RwLockWriteGuard<InnerStore>, region_id: RegionID, i
     let mut affected_region_types: FnvHashSet<RegionType> = FnvHashSet::default();
     let mut removed_ids: FnvHashSet<OrderID> = FnvHashSet::default();
 
-    // why Rust, why?
-    let orders_to_delete = &store.regions[&region_id].difference(ids_in_region).cloned().collect::<FnvHashSet<OrderID>>();
+    // Sometimes a region stays empty even though an update ran e.g. if the first update failed or if it is a region without orders
+    let region_exists = store.regions.contains_key(&region_id);
+    
+    if region_exists {
+        let orders_to_delete = &store
+            .regions[&region_id]
+            .difference(ids_in_region)
+            .cloned()
+            .collect::<FnvHashSet<OrderID>>();
 
-    for order_id in orders_to_delete {
-        let type_id = store.orders[order_id].type_id;
-        let region_type: RegionType = (region_id, type_id);
+        for order_id in orders_to_delete {
+            let type_id = store.orders[order_id].type_id;
+            let region_type: RegionType = (region_id, type_id);
 
-        removed_ids.insert(*order_id);
-        affected_region_types.insert(region_type);
-        
-        store.regions.get_mut(&region_id).unwrap().remove(order_id);
-        store.types.get_mut(&type_id).unwrap().remove(order_id);
-        store.region_types.get_mut(&(region_id, type_id)).unwrap().remove(order_id);
-        store.orders.remove(order_id);
+            removed_ids.insert(*order_id);
+            affected_region_types.insert(region_type);
+            
+            store.regions.get_mut(&region_id).unwrap().remove(order_id);
+            store.types.get_mut(&type_id).unwrap().remove(order_id);
+            store.region_types.get_mut(&(region_id, type_id)).unwrap().remove(order_id);
+            store.orders.remove(order_id);
+        }
     }
 
     (affected_region_types, removed_ids)
