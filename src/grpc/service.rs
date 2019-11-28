@@ -1,6 +1,6 @@
 use bytes::{Buf, BufMut};
 use prost::encoding::*;
-use prost::{Message, DecodeError};
+use prost::{DecodeError, Message};
 
 #[derive(Clone, PartialEq, Message)]
 pub struct Empty {}
@@ -8,43 +8,43 @@ pub struct Empty {}
 #[derive(Clone, PartialEq, Message)]
 pub struct GetOrderRequest {
     /// Fetch recorded history of an order
-    #[prost(uint64, tag="1")]
+    #[prost(uint64, tag = "1")]
     pub order_id: u64,
 }
 #[derive(Clone, PartialEq, Message)]
 pub struct GetRegionRequest {
     /// Defines which region the data is fetched for
-    #[prost(uint64, tag="1")]
+    #[prost(uint64, tag = "1")]
     pub region_id: u64,
 }
 #[derive(Clone, PartialEq, Message)]
 pub struct GetTypeRequest {
     /// Defines which type the data is fetched for
-    #[prost(uint64, tag="1")]
+    #[prost(uint64, tag = "1")]
     pub type_id: u64,
 }
 #[derive(Clone, PartialEq, Message)]
 pub struct GetRegionTypeRequest {
     /// Defines which region the data is fetched for
-    #[prost(uint64, tag="1")]
+    #[prost(uint64, tag = "1")]
     pub region_id: u64,
     /// Defines which type the data is fetched for
-    #[prost(uint64, tag="2")]
+    #[prost(uint64, tag = "2")]
     pub type_id: u64,
 }
 #[derive(Clone, PartialEq, Message)]
 pub struct GetRegionTypeUpdateStreamResponse {
     /// Region/tye pairs affected by update
-    #[prost(message, repeated, tag="1")]
+    #[prost(message, repeated, tag = "1")]
     pub region_types: ::std::vec::Vec<RegionType>,
 }
 #[derive(Clone, PartialEq, Message)]
 pub struct RegionType {
     /// The update's region's ID
-    #[prost(uint64, tag="1")]
+    #[prost(uint64, tag = "1")]
     pub region_id: u64,
     /// The update's type's ID
-    #[prost(uint64, tag="2")]
+    #[prost(uint64, tag = "2")]
     pub type_id: u64,
 }
 
@@ -54,14 +54,18 @@ pub type Orders = Vec<u8>;
 
 #[derive(Debug)]
 pub struct GetOrdersResponse {
-    pub orders: Orders
+    pub orders: Orders,
 }
 
 impl Message for GetOrdersResponse {
-    fn encode_raw<B>(&self, buf: &mut B) where B: BufMut {
+    fn encode_raw<B>(&self, buf: &mut B)
+        where B: BufMut
+    {
         buf.put_slice(&self.orders);
     }
-    fn merge_field<B>(&mut self, buf: &mut B) -> Result<(), DecodeError> where B: Buf {
+    fn merge_field<B>(&mut self, buf: &mut B) -> Result<(), DecodeError>
+        where B: Buf
+    {
         let (tag, wire_type) = decode_key(buf)?;
         if tag == 1 {
             bytes::merge(wire_type, &mut self.orders, buf)
@@ -70,7 +74,11 @@ impl Message for GetOrdersResponse {
         }
     }
     fn encoded_len(&self) -> usize {
-        if !self.orders.is_empty() { bytes::encoded_len(1, &self.orders) } else { 0 }
+        if !self.orders.is_empty() {
+            bytes::encoded_len(1, &self.orders)
+        } else {
+            0
+        }
     }
     fn clear(&mut self) {
         self.orders.clear();
@@ -78,36 +86,50 @@ impl Message for GetOrdersResponse {
 }
 
 pub mod server {
-    use ::tower_grpc::codegen::server::*;
-    use super::{GetOrderRequest, GetOrdersResponse, GetRegionRequest, GetTypeRequest, GetRegionTypeRequest, GetRegionTypeUpdateStreamResponse, Empty};
+    use super::{
+        Empty, GetOrderRequest, GetOrdersResponse, GetRegionRequest, GetRegionTypeRequest,
+        GetRegionTypeUpdateStreamResponse, GetTypeRequest,
+    };
+    use tower_grpc::codegen::server::*;
 
     // Redefine the try_ready macro so that it doesn't need to be explicitly
     // imported by the user of this generated code.
     macro_rules! try_ready {
-        ($e:expr) => (match $e {
-            Ok(futures::Async::Ready(t)) => t,
-            Ok(futures::Async::NotReady) => return Ok(futures::Async::NotReady),
-            Err(e) => return Err(From::from(e)),
-        })
+        ($e:expr) => {
+            match $e {
+                Ok(futures::Async::Ready(t)) => t,
+                Ok(futures::Async::NotReady) => return Ok(futures::Async::NotReady),
+                Err(e) => return Err(From::from(e)),
+            }
+        };
     }
 
     pub trait EsiMarkets: Clone {
-        type GetOrderFuture: futures::Future<Item = grpc::Response<GetOrdersResponse>, Error = grpc::Error>;
-        type GetRegionFuture: futures::Future<Item = grpc::Response<GetOrdersResponse>, Error = grpc::Error>;
-        type GetTypeFuture: futures::Future<Item = grpc::Response<GetOrdersResponse>, Error = grpc::Error>;
-        type GetRegionTypeFuture: futures::Future<Item = grpc::Response<GetOrdersResponse>, Error = grpc::Error>;
+        type GetOrderFuture: futures::Future<Item = grpc::Response<GetOrdersResponse>,
+                                             Error = grpc::Error>;
+        type GetRegionFuture: futures::Future<Item = grpc::Response<GetOrdersResponse>,
+                                              Error = grpc::Error>;
+        type GetTypeFuture: futures::Future<Item = grpc::Response<GetOrdersResponse>,
+                                            Error = grpc::Error>;
+        type GetRegionTypeFuture: futures::Future<Item = grpc::Response<GetOrdersResponse>,
+                                                  Error = grpc::Error>;
         type GetRegionTypeUpdateStreamStream: futures::Stream<Item = GetRegionTypeUpdateStreamResponse, Error = grpc::Error>;
         type GetRegionTypeUpdateStreamFuture: futures::Future<Item = grpc::Response<Self::GetRegionTypeUpdateStreamStream>, Error = grpc::Error>;
 
         fn get_order(&mut self, request: grpc::Request<GetOrderRequest>) -> Self::GetOrderFuture;
 
-        fn get_region(&mut self, request: grpc::Request<GetRegionRequest>) -> Self::GetRegionFuture;
+        fn get_region(&mut self, request: grpc::Request<GetRegionRequest>)
+                      -> Self::GetRegionFuture;
 
         fn get_type(&mut self, request: grpc::Request<GetTypeRequest>) -> Self::GetTypeFuture;
 
-        fn get_region_type(&mut self, request: grpc::Request<GetRegionTypeRequest>) -> Self::GetRegionTypeFuture;
+        fn get_region_type(&mut self,
+                           request: grpc::Request<GetRegionTypeRequest>)
+                           -> Self::GetRegionTypeFuture;
 
-        fn get_region_type_update_stream(&mut self, request: grpc::Request<Empty>) -> Self::GetRegionTypeUpdateStreamFuture;
+        fn get_region_type_update_stream(&mut self,
+                                         request: grpc::Request<Empty>)
+                                         -> Self::GetRegionTypeUpdateStreamFuture;
     }
 
     #[derive(Debug, Clone)]
@@ -115,16 +137,14 @@ pub mod server {
         esi_markets: T,
     }
 
-    impl<T> EsiMarketsServer<T>
-    where T: EsiMarkets,
+    impl<T> EsiMarketsServer<T> where T: EsiMarkets
     {
         pub fn new(esi_markets: T) -> Self {
             Self { esi_markets }
         }
     }
 
-    impl<T> tower::Service for EsiMarketsServer<T>
-    where T: EsiMarkets,
+    impl<T> tower::Service for EsiMarketsServer<T> where T: EsiMarkets
     {
         type Request = http::Request<tower_h2::RecvBody>;
         type Response = http::Response<esi_markets::ResponseBody<T>>;
@@ -160,19 +180,17 @@ pub mod server {
                     esi_markets::ResponseFuture { kind: Ok(GetRegionType(response)) }
                 }
                 "/esiMarkets.ESIMarkets/GetRegionTypeUpdateStream" => {
-                    let service = esi_markets::methods::GetRegionTypeUpdateStream(self.esi_markets.clone());
+                    let service =
+                        esi_markets::methods::GetRegionTypeUpdateStream(self.esi_markets.clone());
                     let response = grpc::Grpc::server_streaming(service, request);
                     esi_markets::ResponseFuture { kind: Ok(GetRegionTypeUpdateStream(response)) }
                 }
-                _ => {
-                    esi_markets::ResponseFuture { kind: Err(grpc::Status::UNIMPLEMENTED) }
-                }
+                _ => esi_markets::ResponseFuture { kind: Err(grpc::Status::UNIMPLEMENTED) },
             }
         }
     }
 
-    impl<T> tower::NewService for EsiMarketsServer<T>
-    where T: EsiMarkets,
+    impl<T> tower::NewService for EsiMarketsServer<T> where T: EsiMarkets
     {
         type Request = http::Request<tower_h2::RecvBody>;
         type Response = http::Response<esi_markets::ResponseBody<T>>;
@@ -187,8 +205,8 @@ pub mod server {
     }
 
     pub mod esi_markets {
-        use ::tower_grpc::codegen::server::*;
         use super::EsiMarkets;
+        use tower_grpc::codegen::server::*;
 
         pub struct ResponseFuture<T>
         where T: EsiMarkets,
@@ -202,8 +220,7 @@ pub mod server {
             >, grpc::Status>,
         }
 
-        impl<T> futures::Future for ResponseFuture<T>
-        where T: EsiMarkets,
+        impl<T> futures::Future for ResponseFuture<T> where T: EsiMarkets
         {
             type Item = http::Response<ResponseBody<T>>;
             type Error = h2::Error;
@@ -267,8 +284,7 @@ pub mod server {
             >, grpc::Status>,
         }
 
-        impl<T> tower_h2::Body for ResponseBody<T>
-        where T: EsiMarkets,
+        impl<T> tower_h2::Body for ResponseBody<T> where T: EsiMarkets
         {
             type Data = bytes::Bytes;
 
@@ -326,13 +342,15 @@ pub mod server {
         }
 
         pub mod methods {
-            use ::tower_grpc::codegen::server::*;
-            use super::super::{EsiMarkets, GetOrderRequest, GetOrdersResponse, GetRegionRequest, GetTypeRequest, GetRegionTypeRequest, Empty};
+            use super::super::{
+                Empty, EsiMarkets, GetOrderRequest, GetOrdersResponse, GetRegionRequest,
+                GetRegionTypeRequest, GetTypeRequest,
+            };
+            use tower_grpc::codegen::server::*;
 
             pub struct GetOrder<T>(pub T);
 
-            impl<T> tower::Service for GetOrder<T>
-            where T: EsiMarkets,
+            impl<T> tower::Service for GetOrder<T> where T: EsiMarkets
             {
                 type Request = grpc::Request<GetOrderRequest>;
                 type Response = grpc::Response<GetOrdersResponse>;
@@ -350,8 +368,7 @@ pub mod server {
 
             pub struct GetRegion<T>(pub T);
 
-            impl<T> tower::Service for GetRegion<T>
-            where T: EsiMarkets,
+            impl<T> tower::Service for GetRegion<T> where T: EsiMarkets
             {
                 type Request = grpc::Request<GetRegionRequest>;
                 type Response = grpc::Response<GetOrdersResponse>;
@@ -369,8 +386,7 @@ pub mod server {
 
             pub struct GetType<T>(pub T);
 
-            impl<T> tower::Service for GetType<T>
-            where T: EsiMarkets,
+            impl<T> tower::Service for GetType<T> where T: EsiMarkets
             {
                 type Request = grpc::Request<GetTypeRequest>;
                 type Response = grpc::Response<GetOrdersResponse>;
@@ -388,8 +404,7 @@ pub mod server {
 
             pub struct GetRegionType<T>(pub T);
 
-            impl<T> tower::Service for GetRegionType<T>
-            where T: EsiMarkets,
+            impl<T> tower::Service for GetRegionType<T> where T: EsiMarkets
             {
                 type Request = grpc::Request<GetRegionTypeRequest>;
                 type Response = grpc::Response<GetOrdersResponse>;
@@ -407,8 +422,7 @@ pub mod server {
 
             pub struct GetRegionTypeUpdateStream<T>(pub T);
 
-            impl<T> tower::Service for GetRegionTypeUpdateStream<T>
-            where T: EsiMarkets,
+            impl<T> tower::Service for GetRegionTypeUpdateStream<T> where T: EsiMarkets
             {
                 type Request = grpc::Request<Empty>;
                 type Response = grpc::Response<T::GetRegionTypeUpdateStreamStream>;

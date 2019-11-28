@@ -2,31 +2,31 @@
 
 use std::fs;
 use std::fs::OpenOptions;
-use std::io::{BufReader, BufWriter};
 use std::hash::{Hash, Hasher};
+use std::io::{BufReader, BufWriter};
 use std::sync::Arc;
 use std::thread;
 use std::time;
 
-use bincode::{serialize_into, deserialize_from};
+use bincode::{deserialize_from, serialize_into};
 use chrono::prelude::*;
+use flate2::bufread::DeflateDecoder;
+use flate2::write::DeflateEncoder;
 use flate2::Compression;
-use flate2::write::{DeflateEncoder};
-use flate2::bufread::{DeflateDecoder};
-use fnv::FnvHasher;
 use fnv::FnvHashMap;
 use fnv::FnvHashSet;
-use futures::{Sink, Stream};
+use fnv::FnvHasher;
 use futures::sync::mpsc::{channel, Sender};
+use futures::{Sink, Stream};
 use parking_lot::{Mutex, RwLock, RwLockWriteGuard};
 use prost::Message;
 use prost_types::Timestamp;
 
-use super::esi::types::*;
 use super::errors::*;
+use super::esi::types::*;
 
-pub const STORE_PATH: &str  = "cache/store";
-pub const TEMP_STORE_PATH: &str  = "cache/store.part";
+pub const STORE_PATH: &str = "cache/store";
+pub const TEMP_STORE_PATH: &str = "cache/store.part";
 
 /// A vec of orders tagged with external `seen_at`
 pub type TaggedOrderVec = Vec<(Order, DateTime<Utc>)>;
@@ -46,7 +46,7 @@ pub struct UpdateResult {
     pub updated: FnvHashSet<OrderID>,
     pub unaffected: FnvHashSet<OrderID>,
     pub closed: FnvHashSet<OrderID>,
-    pub region_types: FnvHashSet<RegionType>
+    pub region_types: FnvHashSet<RegionType>,
 }
 
 /// Internal storage structure
@@ -56,7 +56,7 @@ struct InnerStore {
     regions: FnvHashMap<RegionID, FnvHashSet<OrderID>>,
     types: FnvHashMap<TypeID, FnvHashSet<OrderID>>,
     region_types: FnvHashMap<RegionType, FnvHashSet<OrderID>>,
-    update_results_streams: Arc<Mutex<Vec<Sender<Arc<UpdateResult>>>>>
+    update_results_streams: Arc<Mutex<Vec<Sender<Arc<UpdateResult>>>>>,
 }
 
 /// Simple order + history
@@ -66,18 +66,16 @@ struct StoreObject {
     hash: u64,
     region_id: RegionID,
     type_id: TypeID,
-    history: Vec<OrderBlob>
+    history: Vec<OrderBlob>,
 }
 
 impl Store {
     pub fn new() -> Result<Store> {
-        let inner = InnerStore {
-            orders: FnvHashMap::default(),
-            regions: FnvHashMap::default(),
-            types: FnvHashMap::default(),
-            region_types: FnvHashMap::default(),
-            update_results_streams: Arc::new(Mutex::new(vec![]))
-        };
+        let inner = InnerStore { orders: FnvHashMap::default(),
+                                 regions: FnvHashMap::default(),
+                                 types: FnvHashMap::default(),
+                                 region_types: FnvHashMap::default(),
+                                 update_results_streams: Arc::new(Mutex::new(vec![])) };
 
         let retval = Store(Arc::new(RwLock::new(inner)));
 
@@ -96,13 +94,9 @@ impl Store {
                 thread::sleep(time::Duration::from_secs(60 * 60)); // Hourly
 
                 let clone = clone.clone();
-                thread::spawn(move || {
-                    match clone.persist_store() {
-                        Ok(_) => {}
-                        Err(e) => {
-                            warn!("Saving store to disk failed: {}", e)
-                        }
-                    }
+                thread::spawn(move || match clone.persist_store() {
+                    Ok(_) => {}
+                    Err(e) => warn!("Saving store to disk failed: {}", e),
                 });
             }
         });
@@ -111,10 +105,9 @@ impl Store {
     /// Save store to disk
     pub fn persist_store(&self) -> Result<()> {
         debug!("Writing store to disk...");
-        let store_file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open(TEMP_STORE_PATH)?;
+        let store_file = OpenOptions::new().write(true)
+                                           .create(true)
+                                           .open(TEMP_STORE_PATH)?;
 
         let writer = BufWriter::new(store_file);
         let mut deflate_writer = DeflateEncoder::new(writer, Compression::fast());
@@ -135,11 +128,10 @@ impl Store {
     /// Load store from disk or create cache
     fn load_store(&self) -> Result<()> {
         debug!("Loading store from disk...");
-        let store_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(STORE_PATH)?;
+        let store_file = OpenOptions::new().read(true)
+                                           .write(true)
+                                           .create(true)
+                                           .open(STORE_PATH)?;
 
         let reader = BufReader::new(store_file);
         let mut deflate_reader = DeflateDecoder::new(reader);
@@ -160,14 +152,17 @@ impl Store {
 
             info!("Done creating indices.");
         } else {
-            info!("No orders loaded from disk: {:?}", store_result.unwrap_err());
+            info!("No orders loaded from disk: {:?}",
+                  store_result.unwrap_err());
         }
 
         Ok(())
     }
-    
     /// Store multiple orders in the store. Update if existing
-    pub fn store_region(&mut self, region_id: RegionID, orders: TaggedOrderVec) -> Arc<UpdateResult> {
+    pub fn store_region(&mut self,
+                        region_id: RegionID,
+                        orders: TaggedOrderVec)
+                        -> Arc<UpdateResult> {
         // Acquire write lock
         // Iterate over orders, serialize (protobuf, append seen_at field later) and hash (build StoreObjects) -> rayon
         //  Check if hash is present
@@ -201,7 +196,6 @@ impl Store {
             // TODO: parallelize encode/hash, add seen_at step using rayon?
             let mut hash_blob = Vec::with_capacity(Message::encoded_len(&order));
             Message::encode(&order, &mut hash_blob).unwrap();
-            
             // Hash the blob
             let mut hasher = FnvHasher::default();
             hash_blob.as_slice().hash(&mut hasher);
@@ -229,7 +223,6 @@ impl Store {
                 }
             } else {
                 // Not there, new entry
-                
                 // Set seen_at and reencode
                 order.seen_at = Some(Timestamp::from(time::SystemTime::from(last_modified)));
 
@@ -239,13 +232,12 @@ impl Store {
                 new.insert(order.order_id);
                 region_types.insert((region_id, order.type_id));
 
-                store.orders.insert(order.order_id, StoreObject{
-                    hash: hash,
-                    history: vec![seen_blob.clone()],
-                    order: seen_blob,
-                    region_id: region_id,
-                    type_id: order.type_id
-                });
+                store.orders.insert(order.order_id,
+                                    StoreObject { hash: hash,
+                                                  history: vec![seen_blob.clone()],
+                                                  order: seen_blob,
+                                                  region_id: region_id,
+                                                  type_id: order.type_id });
 
                 add_to_indices(&mut store, order.order_id, order.type_id, region_id);
             }
@@ -255,42 +247,41 @@ impl Store {
         region_types.extend(rt_closed.iter());
 
         // Push result to stream and return
-        let update_result = Arc::new(UpdateResult{
-            is_first_run,
-            new,
-            updated,
-            unaffected,
-            closed,
-            region_types
-        });
+        let update_result = Arc::new(UpdateResult { is_first_run,
+                                                    new,
+                                                    updated,
+                                                    unaffected,
+                                                    closed,
+                                                    region_types });
 
         let mut streams = store.update_results_streams.lock();
         streams.drain_filter(|stream| {
-            match stream.try_send(update_result.clone()) {
-                Ok(()) => false,
-                Err(ref error) if error.is_disconnected() => {
-                    debug!("Result stream client disconnected.");
-                    true
-                },
-                Err(ref error) if error.is_full() => {
-                    warn!("Closing result stream due to backpressured client.");
+                   match stream.try_send(update_result.clone()) {
+                       Ok(()) => false,
+                       Err(ref error) if error.is_disconnected() => {
+                           debug!("Result stream client disconnected.");
+                           true
+                       }
+                       Err(ref error) if error.is_full() => {
+                           warn!("Closing result stream due to backpressured client.");
 
-                    // Close backpressured stream as consumer is not able to keep up
-                    let close_result = stream.close();
-                    
-                    if close_result.is_err() {
-                        error!("Error while closing result stream: {}", close_result.unwrap_err().to_string());
-                    }
+                           // Close backpressured stream as consumer is not able to keep up
+                           let close_result = stream.close();
 
-                    true
-                },
-                Err(error) => {
-                    error!("Unknown stream error while trying to send update result: {}", error.to_string());
-                    true
-                },
-            }
-        });
+                           if close_result.is_err() {
+                               error!("Error while closing result stream: {}",
+                                      close_result.unwrap_err().to_string());
+                           }
 
+                           true
+                       }
+                       Err(error) => {
+                           error!("Unknown stream error while trying to send update result: {}",
+                                  error.to_string());
+                           true
+                       }
+                   }
+               });
         update_result
     }
 
@@ -397,25 +388,32 @@ impl Store {
         let store = self.0.write();
         let mut streams = store.update_results_streams.lock();
 
-        debug!("Result stream client connected. Now there are {} active clients.", streams.len()+1);
+        debug!("Result stream client connected. Now there are {} active clients.",
+               streams.len() + 1);
 
         let (sender, receiver) = channel::<Arc<UpdateResult>>(10);
         streams.push(sender);
-        
         Box::new(receiver)
     }
 }
 
 /// Add new order to indices in store
-fn add_to_indices(store: &mut RwLockWriteGuard<InnerStore>, order_id: OrderID, type_id: TypeID, region_id: RegionID) {
+fn add_to_indices(store: &mut RwLockWriteGuard<InnerStore>,
+                  order_id: OrderID,
+                  type_id: TypeID,
+                  region_id: RegionID) {
     // Add type if unknown
-    store.types.entry(type_id).or_insert_with(FnvHashSet::default);
+    store.types
+         .entry(type_id)
+         .or_insert_with(FnvHashSet::default);
 
     // Add order ID to type index
     store.types.get_mut(&type_id).unwrap().insert(order_id);
 
     // Add region if unknown
-    store.regions.entry(region_id).or_insert_with(FnvHashSet::default);
+    store.regions
+         .entry(region_id)
+         .or_insert_with(FnvHashSet::default);
 
     // Add order ID to region index
     store.regions.get_mut(&region_id).unwrap().insert(order_id);
@@ -423,14 +421,22 @@ fn add_to_indices(store: &mut RwLockWriteGuard<InnerStore>, order_id: OrderID, t
     // Add region type if unknown
     let region_type: RegionType = (region_id, type_id);
 
-    store.region_types.entry(region_type).or_insert_with(FnvHashSet::default);
+    store.region_types
+         .entry(region_type)
+         .or_insert_with(FnvHashSet::default);
 
     // Add order ID to region type index
-    store.region_types.get_mut(&region_type).unwrap().insert(order_id);
+    store.region_types
+         .get_mut(&region_type)
+         .unwrap()
+         .insert(order_id);
 }
 
 /// Clear store of expired orders by comparing OIDs in region, must be done after each full region update!
-fn prune_region(store: &mut RwLockWriteGuard<InnerStore>, region_id: RegionID, ids_in_region: &FnvHashSet<OrderID>) -> (FnvHashSet<RegionType>, FnvHashSet<OrderID>) {
+fn prune_region(store: &mut RwLockWriteGuard<InnerStore>,
+                region_id: RegionID,
+                ids_in_region: &FnvHashSet<OrderID>)
+                -> (FnvHashSet<RegionType>, FnvHashSet<OrderID>) {
     // Acquire write lock
     // Diff ids_in_region with regions[region_id]
     // For those missing in ids_in_region:
@@ -439,23 +445,20 @@ fn prune_region(store: &mut RwLockWriteGuard<InnerStore>, region_id: RegionID, i
     //      Remove from types[type_id]
     //      Remove from region_types[(region_id, type_id)]
     //      Remove from orders
-    //      
+    //
     // regions[region_id] = ids_in_region
     // Release write lock
-    // Return 
+    // Return
 
     let mut affected_region_types: FnvHashSet<RegionType> = FnvHashSet::default();
     let mut removed_ids: FnvHashSet<OrderID> = FnvHashSet::default();
 
     // Sometimes a region stays empty even though an update ran e.g. if the first update failed or if it is a region without orders
     let region_exists = store.regions.contains_key(&region_id);
-    
     if region_exists {
-        let orders_to_delete = &store
-            .regions[&region_id]
-            .difference(ids_in_region)
-            .cloned()
-            .collect::<FnvHashSet<OrderID>>();
+        let orders_to_delete = &store.regions[&region_id].difference(ids_in_region)
+                                                         .cloned()
+                                                         .collect::<FnvHashSet<OrderID>>();
 
         for order_id in orders_to_delete {
             let type_id = store.orders[order_id].type_id;
@@ -463,10 +466,12 @@ fn prune_region(store: &mut RwLockWriteGuard<InnerStore>, region_id: RegionID, i
 
             removed_ids.insert(*order_id);
             affected_region_types.insert(region_type);
-            
             store.regions.get_mut(&region_id).unwrap().remove(order_id);
             store.types.get_mut(&type_id).unwrap().remove(order_id);
-            store.region_types.get_mut(&(region_id, type_id)).unwrap().remove(order_id);
+            store.region_types
+                 .get_mut(&(region_id, type_id))
+                 .unwrap()
+                 .remove(order_id);
             store.orders.remove(order_id);
         }
     }

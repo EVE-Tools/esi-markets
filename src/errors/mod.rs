@@ -6,7 +6,7 @@ use reqwest;
 use serde_json;
 use time;
 
-error_chain!{
+error_chain! {
     foreign_links {
         BincodeError(std::boxed::Box<bincode::ErrorKind>);
         LogError(log::SetLoggerError);

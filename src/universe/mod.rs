@@ -1,24 +1,24 @@
 use std::fs::OpenOptions;
-use std::io::{Read, BufReader, BufWriter};
+use std::io::{BufReader, BufWriter, Read};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use bincode::{serialize_into, deserialize_from};
+use bincode::{deserialize_from, serialize_into};
 use crossbeam_channel as channel;
+use flate2::bufread::DeflateDecoder;
+use flate2::write::DeflateEncoder;
 use flate2::Compression;
-use flate2::write::{DeflateEncoder};
-use flate2::bufread::{DeflateDecoder};
 use fnv::{FnvHashMap, FnvHashSet};
 use parking_lot::RwLock;
 use reqwest;
 use serde_json;
 
+use super::errors::*;
 use super::esi;
 use super::esi::types::*;
-use super::errors::*;
 
-pub const BLACKLIST_PATH: &str  = "cache/blacklist";
+pub const BLACKLIST_PATH: &str = "cache/blacklist";
 
 /// Represents a shared handle for querying map data and blacklisting structures
 #[derive(Clone, Debug)]
@@ -29,24 +29,22 @@ struct Inner {
     esi_client: esi::Client,
     regions: FnvHashSet<RegionID>,
     structures: FnvHashMap<RegionID, FnvHashSet<LocationID>>,
-    structure_blacklist: FnvHashSet<LocationID>
+    structure_blacklist: FnvHashSet<LocationID>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Structure {
-    region_id: RegionID
+    region_id: RegionID,
 }
 
 impl Universe {
     /// Create a new instance of the universe structure and spawn housekeeping thread
     pub fn new(esi_client: esi::Client) -> Result<Universe> {
-        let inner = Inner {
-            esi_client,
-            regions: FnvHashSet::default(),
-            structures: FnvHashMap::default(),
-            structure_blacklist: FnvHashSet::default()
-        };
+        let inner = Inner { esi_client,
+                            regions: FnvHashSet::default(),
+                            structures: FnvHashMap::default(),
+                            structure_blacklist: FnvHashSet::default() };
 
         let new = Universe(Arc::new(RwLock::new(inner)));
 
@@ -89,7 +87,7 @@ impl Universe {
                             }
                         });
                     },
-                    recv(blacklist_reset) => { 
+                    recv(blacklist_reset) => {
                         let clone = clone.clone();
                         thread::spawn(move || {
                             clone.clear_blacklist();
@@ -126,14 +124,13 @@ impl Universe {
     pub fn get_market_regions(&self) -> Vec<RegionID> {
         let regions = &self.0.read().regions;
 
-        regions
-            .clone()
-            .into_iter()
-            .filter(|id|{
-                // These regions do not have a market or structures
-                *id != 10_000_004 && *id != 10_000_019
-            })
-            .collect::<Vec<RegionID>>()
+        regions.clone()
+               .into_iter()
+               .filter(|id| {
+                   // These regions do not have a market or structures
+                   *id != 10_000_004 && *id != 10_000_019
+               })
+               .collect::<Vec<RegionID>>()
     }
 
     /// Return all structures in a region which are not blacklisted
@@ -143,11 +140,10 @@ impl Universe {
 
         all_structures?;
 
-        Some(all_structures
-            .unwrap()
-            .difference(&locations.structure_blacklist)
-            .cloned()
-            .collect::<Vec<LocationID>>())
+        Some(all_structures.unwrap()
+                           .difference(&locations.structure_blacklist)
+                           .cloned()
+                           .collect::<Vec<LocationID>>())
     }
 
     /// Add a structure to the blacklist
@@ -204,12 +200,10 @@ impl Universe {
     /// Load blacklist from disk or create cache
     fn load_blacklist(&self) -> Result<()> {
         debug!("Loading blacklist from file...");
-        let blacklist_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(BLACKLIST_PATH)?;
-        
+        let blacklist_file = OpenOptions::new().read(true)
+                                               .write(true)
+                                               .create(true)
+                                               .open(BLACKLIST_PATH)?;
         let reader = BufReader::new(blacklist_file);
         let mut deflate_reader = DeflateDecoder::new(reader);
 
@@ -220,7 +214,8 @@ impl Universe {
             info!("Loaded {} blacklist entries from disk.", list.len());
             self.0.write().structure_blacklist = list;
         } else {
-            info!("No blacklist entries loaded from disk: {:?}", blacklist_result.unwrap_err());
+            info!("No blacklist entries loaded from disk: {:?}",
+                  blacklist_result.unwrap_err());
         }
 
         Ok(())
@@ -229,10 +224,9 @@ impl Universe {
     /// Save blacklist to disk
     pub fn persist_blacklist(&self) -> Result<()> {
         debug!("Writing blacklist to disk...");
-        let blacklist_file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open(BLACKLIST_PATH)?;
+        let blacklist_file = OpenOptions::new().write(true)
+                                               .create(true)
+                                               .open(BLACKLIST_PATH)?;
 
         let writer = BufWriter::new(blacklist_file);
         let mut deflate_writer = DeflateEncoder::new(writer, Compression::fast());
@@ -250,10 +244,9 @@ impl Universe {
 }
 
 fn get_structure_regions() -> Result<FnvHashMap<LocationID, RegionID>> {
-    let mut resp = reqwest::Client::new()
-        .get("https://stop.hammerti.me.uk/api/structure/all")
-        .header(reqwest::header::UserAgent::new(esi::USER_AGENT))
-        .send()?;
+    let mut resp = reqwest::Client::new().get("https://stop.hammerti.me.uk/api/structure/all")
+                                         .header(reqwest::header::UserAgent::new(esi::USER_AGENT))
+                                         .send()?;
 
     if !resp.status().is_success() {
         bail!("could not load structures from 3rd party API - non-200 HTTP status!")
