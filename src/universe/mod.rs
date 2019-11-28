@@ -178,11 +178,9 @@ impl Universe {
 
         for id in structure_ids {
             // Check if official structure is in list from 3rd party API
-            let region = structure_regions.get(&id);
+            let region_option = structure_regions.get(&id);
 
-            if region.is_some() {
-                let region = region.unwrap();
-
+            if let Some(region) = region_option {
                 // Create empty set if needed
                 if result.get(region).is_none() {
                     result.insert(*region, FnvHashSet::default());
@@ -209,13 +207,15 @@ impl Universe {
 
         let blacklist_result = deserialize_from(&mut deflate_reader);
 
-        if blacklist_result.is_ok() {
-            let list: FnvHashSet<LocationID> = blacklist_result?;
-            info!("Loaded {} blacklist entries from disk.", list.len());
-            self.0.write().structure_blacklist = list;
-        } else {
-            info!("No blacklist entries loaded from disk: {:?}",
-                  blacklist_result.unwrap_err());
+        match blacklist_result {
+            Ok(blacklist) => {
+                let list: FnvHashSet<LocationID> = blacklist;
+                info!("Loaded {} blacklist entries from disk.", list.len());
+                self.0.write().structure_blacklist = list;
+            }
+            Err(error) => {
+                info!("No blacklist entries loaded from disk: {:?}", error);
+            }
         }
 
         Ok(())
@@ -233,10 +233,10 @@ impl Universe {
 
         let res = serialize_into(&mut deflate_writer, &self.0.read().structure_blacklist);
 
-        if res.is_ok() {
-            debug!("Successfully wrote blacklist to disk.");
+        if let Err(error) = res {
+            bail!(error);
         } else {
-            bail!(res.unwrap_err());
+            debug!("Successfully wrote blacklist to disk.");
         }
 
         Ok(())

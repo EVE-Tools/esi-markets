@@ -114,13 +114,13 @@ impl Store {
 
         let res = serialize_into(&mut deflate_writer, &self.0.read().orders);
 
-        if res.is_ok() {
-            fs::remove_file(STORE_PATH)?;
-            fs::rename(TEMP_STORE_PATH, STORE_PATH)?;
-            debug!("Successfully wrote store to disk.");
-        } else {
-            bail!(res.unwrap_err());
+        if let Err(res) = res {
+            bail!(res);
         }
+
+        fs::remove_file(STORE_PATH)?;
+        fs::rename(TEMP_STORE_PATH, STORE_PATH)?;
+        debug!("Successfully wrote store to disk.");
 
         Ok(())
     }
@@ -138,7 +138,9 @@ impl Store {
 
         let store_result = deserialize_from(&mut deflate_reader);
 
-        if store_result.is_ok() {
+        if let Err(error) = store_result {
+            info!("No orders loaded from disk: {:?}", error);
+        } else {
             let mut lock = self.0.write();
             let orders: FnvHashMap<OrderID, StoreObject> = store_result?;
             info!("Loaded {} orders from disk.", orders.len());
@@ -151,9 +153,6 @@ impl Store {
             lock.orders = orders;
 
             info!("Done creating indices.");
-        } else {
-            info!("No orders loaded from disk: {:?}",
-                  store_result.unwrap_err());
         }
 
         Ok(())
@@ -268,9 +267,8 @@ impl Store {
                            // Close backpressured stream as consumer is not able to keep up
                            let close_result = stream.close();
 
-                           if close_result.is_err() {
-                               error!("Error while closing result stream: {}",
-                                      close_result.unwrap_err().to_string());
+                           if let Err(error) = close_result {
+                               error!("Error while closing result stream: {}", error.to_string());
                            }
 
                            true
@@ -321,10 +319,10 @@ impl Store {
         }
 
         for order_id in oids_region.unwrap() {
-            let order = store.orders.get(order_id);
+            let order_option = store.orders.get(order_id);
 
-            if order.is_some() {
-                orders.push(order.unwrap().order.clone());
+            if let Some(order) = order_option {
+                orders.push(order.order.clone());
             }
         }
 
@@ -347,10 +345,10 @@ impl Store {
         }
 
         for order_id in oids_type.unwrap() {
-            let order = store.orders.get(order_id);
+            let order_option = store.orders.get(order_id);
 
-            if order.is_some() {
-                orders.push(order.unwrap().order.clone());
+            if let Some(order) = order_option {
+                orders.push(order.order.clone());
             }
         }
 
@@ -373,10 +371,10 @@ impl Store {
         }
 
         for order_id in oids_region_type.unwrap() {
-            let order = store.orders.get(order_id);
+            let order_option = store.orders.get(order_id);
 
-            if order.is_some() {
-                orders.push(order.unwrap().order.clone());
+            if let Some(order) = order_option {
+                orders.push(order.order.clone());
             }
         }
 

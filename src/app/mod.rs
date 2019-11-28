@@ -120,8 +120,7 @@ fn start_schedule_loop(client: esi::Client, uni: universe::Universe, order_store
                     }
                 },
                 recv(receive_reschedule, data) => {
-                    if data.is_some() {
-                        let (region_id, run_at) = data.unwrap();
+                    if let Some((region_id, run_at)) = data {
                         schedule.insert(region_id, run_at);
                     }
                 },
@@ -263,14 +262,14 @@ fn download_region_structures(region_id: RegionID,
                               uni: universe::Universe)
                               -> thread::JoinHandle<Result<store::TaggedOrderVec>> {
     thread::spawn(move || {
-        let structure_ids = uni.get_public_structures_in_region(region_id);
+        let structure_id_option = uni.get_public_structures_in_region(region_id);
         let mut orders: store::TaggedOrderVec = Vec::new();
 
-        if structure_ids.is_some() {
+        if let Some(structure_ids) = structure_id_option {
             let mut structure_handles: Vec<thread::JoinHandle<Result<store::TaggedOrderVec>>> =
                 Vec::new();
 
-            for structure in structure_ids.unwrap() {
+            for structure in structure_ids {
                 let handle = download_structure(structure, client.clone(), uni.clone());
                 structure_handles.push(handle);
             }
