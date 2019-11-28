@@ -8,14 +8,14 @@ use chrono::prelude::*;
 use chrono::Duration;
 use parking_lot::RwLock;
 use reqwest;
-use reqwest::header::{Authorization, Bearer, UserAgent, Connection, ContentType};
+use reqwest::header::{Authorization, Bearer, Connection, ContentType, UserAgent};
 use serde;
 use serde_json;
 
 use super::errors;
 use super::errors::*;
 
-pub const USER_AGENT: &str  = "ESI-Markets (element-43.com)";
+pub const USER_AGENT: &str = "ESI-Markets (element-43.com)";
 
 /// A struct containing the context for ESI's oAuth
 #[derive(Clone, Debug)]
@@ -24,18 +24,16 @@ pub struct OAuthContext {
     secret_key: String,
     refresh_token: String,
     access_token: Option<String>,
-    access_until: DateTime<Utc>
+    access_until: DateTime<Utc>,
 }
 
 impl OAuthContext {
     pub fn new(client_id: String, secret_key: String, refresh_token: String) -> OAuthContext {
-        OAuthContext {
-            client_id,
-            secret_key,
-            refresh_token,
-            access_token: None,
-            access_until: Utc::now()
-        }
+        OAuthContext { client_id,
+                       secret_key,
+                       refresh_token,
+                       access_token: None,
+                       access_until: Utc::now() }
     }
 }
 
@@ -44,54 +42,57 @@ impl OAuthContext {
 pub struct MarketMetadata {
     pub pages: u32,
     pub expires: DateTime<Utc>,
-    pub last_modified: DateTime<Utc>
+    pub last_modified: DateTime<Utc>,
 }
 
 /// A client for performing calls to the API.
 #[derive(Clone, Debug)]
-pub struct Client (Arc<RwLock<InnerClient>>);
+pub struct Client(Arc<RwLock<InnerClient>>);
 
 #[derive(Debug)]
 struct InnerClient {
     http: reqwest::Client,
     locked_until: DateTime<Utc>,
-    oauth_context: OAuthContext
+    oauth_context: OAuthContext,
 }
 
 impl Client {
     pub fn new(oauth_context: OAuthContext) -> Client {
-        let inner_client = InnerClient {
-            http: reqwest::Client::new(),
-            locked_until: Utc::now(),
-            oauth_context
-        };
+        let inner_client = InnerClient { http: reqwest::Client::new(),
+                                         locked_until: Utc::now(),
+                                         oauth_context };
 
         Client(Arc::new(RwLock::new(inner_client)))
     }
 
     pub fn get_orders(&self, region_id: types::RegionID, page: u32) -> Result<Vec<types::Order>> {
-        let url = format!("https://esi.tech.ccp.is/v1/markets/{}/orders/?page={}", region_id, page);
+        let url = format!("https://esi.evetech.net/v1/markets/{}/orders/?page={}",
+                          region_id, page);
         let data = unwrap_json(self.get(&url)?)?;
 
         Ok(data)
     }
 
     pub fn get_region_ids(&self) -> Result<Vec<types::RegionID>> {
-        let url = "https://esi.tech.ccp.is/v1/universe/regions/".to_string();
+        let url = "https://esi.evetech.net/v1/universe/regions/".to_string();
         let data = unwrap_json(self.get(&url)?)?;
 
         Ok(data)
     }
 
     pub fn get_structure_ids(&self) -> Result<Vec<types::LocationID>> {
-        let url = "https://esi.tech.ccp.is/v1/universe/structures/".to_string();
+        let url = "https://esi.evetech.net/v1/universe/structures/".to_string();
         let data = unwrap_json(self.get(&url)?)?;
 
         Ok(data)
     }
 
-    pub fn get_structure_orders(&mut self, structure_id: u64, page: u32) -> Result<Vec<types::Order>> {
-        let url = format!("https://esi.tech.ccp.is/v1/markets/structures/{}/?page={}", structure_id, page);
+    pub fn get_structure_orders(&mut self,
+                                structure_id: u64,
+                                page: u32)
+                                -> Result<Vec<types::Order>> {
+        let url = format!("https://esi.evetech.net/v1/markets/structures/{}/?page={}",
+                          structure_id, page);
         let data = unwrap_json(self.get_auth(&url)?)?;
 
         Ok(data)
@@ -99,7 +100,8 @@ impl Client {
 
     /// Return metadata for orders such as number of pages and date generated
     pub fn get_orders_metadata(&self, region_id: types::RegionID) -> Result<MarketMetadata> {
-        let url = format!("https://esi.tech.ccp.is/v1/markets/{}/orders/?page=1", region_id);
+        let url = format!("https://esi.evetech.net/v1/markets/{}/orders/?page=1",
+                          region_id);
         let response = &self.get(&url)?;
 
         self.handle_get_response(response)?;
@@ -108,21 +110,21 @@ impl Client {
         let expires = header_as_datetime("Expires", response)?;
         let last_modified = header_as_datetime("Last-Modified", response)?;
 
-        Ok(MarketMetadata{
-            pages,
-            expires,
-            last_modified
-        })
+        Ok(MarketMetadata { pages,
+                            expires,
+                            last_modified })
     }
 
     /// Return metadata for orders such as number of pages and date generated
     pub fn get_orders_structure_metadata(&mut self, structure_id: u64) -> Result<MarketMetadata> {
-        let url = format!("https://esi.tech.ccp.is/v1/markets/structures/{}/?page=1", structure_id);
+        let url = format!("https://esi.evetech.net/v1/markets/structures/{}/?page=1",
+                          structure_id);
         let response = &self.get_auth(&url)?;
         let forbidden = response.status() == reqwest::StatusCode::Forbidden;
 
         if forbidden {
-            bail!(errors::ErrorKind::HTTPForbiddenError(format!("Structure {} is forbidden!", structure_id).to_owned()));
+            bail!(errors::ErrorKind::HTTPForbiddenError(format!("Structure {} is forbidden!",
+                                                                structure_id)));
         }
 
         self.handle_get_response(response)?;
@@ -131,11 +133,9 @@ impl Client {
         let expires = header_as_datetime("Expires", response)?;
         let last_modified = header_as_datetime("Last-Modified", response)?;
 
-        Ok(MarketMetadata{
-            pages,
-            expires,
-            last_modified
-        })
+        Ok(MarketMetadata { pages,
+                            expires,
+                            last_modified })
     }
 
     /// Simple HTTP GET helper for common requests
@@ -143,11 +143,10 @@ impl Client {
         self.limit_errors()?;
         let client = &self.0.read().http.clone();
 
-        let resp = client
-            .get(url)
-            .header(Connection::keep_alive())
-            .header(UserAgent::new(USER_AGENT))
-            .send()?;
+        let resp = client.get(url)
+                         .header(Connection::keep_alive())
+                         .header(UserAgent::new(USER_AGENT))
+                         .send()?;
 
         self.handle_get_response(&resp)?;
 
@@ -161,18 +160,13 @@ impl Client {
 
         let client = &self.0.read().http.clone();
         let auth_ctx = self.0.read().oauth_context.clone();
-        let auth_header = Authorization(
-            Bearer {
-                token: auth_ctx.access_token.unwrap()
-            }
-        );
+        let auth_header = Authorization(Bearer { token: auth_ctx.access_token.unwrap() });
 
-        let resp = client
-            .get(url)
-            .header(Connection::keep_alive())
-            .header(UserAgent::new(USER_AGENT))
-            .header(auth_header)
-            .send()?;
+        let resp = client.get(url)
+                         .header(Connection::keep_alive())
+                         .header(UserAgent::new(USER_AGENT))
+                         .header(auth_header)
+                         .send()?;
 
         self.handle_get_response(&resp)?;
 
@@ -193,7 +187,11 @@ impl Client {
             let mut lock = self.0.write();
 
             // Now that we're alone check again, as there could be multiple of these requests in parallel and this thread could have been blocked waiting for a lock all the time
-            if lock.oauth_context.access_until.signed_duration_since(Utc::now()) < Duration::seconds(60) {
+            if lock.oauth_context
+                   .access_until
+                   .signed_duration_since(Utc::now())
+               < Duration::seconds(60)
+            {
                 let client_id = lock.oauth_context.client_id.clone();
                 let secret_key = lock.oauth_context.secret_key.clone();
 
@@ -211,10 +209,10 @@ impl Client {
                 let auth_data: types::TokenResponse = unwrap_json(response)?;
 
                 lock.oauth_context.access_token = Some(auth_data.access_token);
-                lock.oauth_context.access_until = Utc::now() + Duration::seconds(auth_data.expires_in);
+                lock.oauth_context.access_until =
+                    Utc::now() + Duration::seconds(auth_data.expires_in);
             }
         }
-        
 
         Ok(())
     }
@@ -265,15 +263,18 @@ impl Client {
 
 /// Try to return an arbitrary header as u32
 fn header_as_number(name: &str, resp: &reqwest::Response) -> Result<u32> {
-    let num = str::from_utf8(resp
-        .headers()
-            .get_raw(name)
-            .ok_or_else(|| Error::from(format!("Response missing the {} header", name)))?
-            .one()
-            .ok_or_else(|| Error::from(format!("Could not get contents of {} header", name)))?)
-        .chain_err(|| format!("Failed to get {} header", name))?
-        .parse()
-        .chain_err(|| format!("Could not parse {} header", name))?;
+    let num = str::from_utf8(resp.headers()
+                                 .get_raw(name)
+                                 .ok_or_else(|| {
+                                     Error::from(format!("Response missing the {} header", name))
+                                 })?
+                                 .one()
+                                 .ok_or_else(|| {
+                                     Error::from(format!("Could not get contents of {} header",
+                                                         name))
+                                 })?).chain_err(|| format!("Failed to get {} header", name))?
+                                     .parse()
+                                     .chain_err(|| format!("Could not parse {} header", name))?;
 
     Ok(num)
 }
@@ -295,7 +296,9 @@ fn header_as_datetime(name: &str, resp: &reqwest::Response) -> Result<DateTime<U
 }
 
 /// Parse JSON via string for performance reasons, see: <https://github.com/serde-rs/json/issues/160>
-fn unwrap_json<T>(mut resp: reqwest::Response) -> Result<T> where T: serde::de::DeserializeOwned {
+fn unwrap_json<T>(mut resp: reqwest::Response) -> Result<T>
+    where T: serde::de::DeserializeOwned
+{
     let body = resp.text()?;
     let data = serde_json::from_str(&body)?;
 
