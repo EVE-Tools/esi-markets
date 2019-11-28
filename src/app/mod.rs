@@ -61,7 +61,7 @@ pub fn run(config: config::Config) -> Result<()> {
     }).expect("Error setting shutdown handler!");
 
     // Launch gRPC server
-    grpc::run_server(order_store.clone(), &config.grpc_host);
+    grpc::run_server(order_store, &config.grpc_host);
 
     Ok(())
 }
