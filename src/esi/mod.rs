@@ -9,7 +9,7 @@ use chrono::prelude::*;
 use chrono::Duration;
 use parking_lot::RwLock;
 use reqwest;
-use reqwest::header::{Authorization, Bearer, Connection, ContentType, UserAgent};
+use reqwest::header::{Authorization, Bearer, Connection, UserAgent};
 use serde;
 use serde_json;
 
