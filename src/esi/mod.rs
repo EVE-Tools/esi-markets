@@ -1,5 +1,6 @@
 pub mod types;
 
+use std::collections::HashMap;
 use std::str;
 use std::sync::Arc;
 use std::thread;
@@ -195,16 +196,17 @@ impl Client {
                 let client_id = lock.oauth_context.client_id.clone();
                 let secret_key = lock.oauth_context.secret_key.clone();
 
+                let mut body = HashMap::new();
+                body.insert("grant_type", "refresh_token");
+                body.insert("refresh_token", &lock.oauth_context.refresh_token);
+
                 // Load auth, acquire write lock, check again, then write new data
-                let response = lock
-                    .http
-                    .post("https://login.eveonline.com/oauth/token")
-                    .header(UserAgent::new(USER_AGENT))
-                    .header(ContentType::json())
-                    .basic_auth(client_id, Some(secret_key))
-                    // Oh yes
-                    .body(format!("{{\"grant_type\": \"refresh_token\", \"refresh_token\": \"{}\"}}", lock.oauth_context.refresh_token))
-                    .send()?;
+                let response = lock.http
+                                   .post("https://login.eveonline.com/v2/oauth/token")
+                                   .header(UserAgent::new(USER_AGENT))
+                                   .basic_auth(client_id, Some(secret_key))
+                                   .form(&body)
+                                   .send()?;
 
                 let auth_data: types::TokenResponse = unwrap_json(response)?;
 
