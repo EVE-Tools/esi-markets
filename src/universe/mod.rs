@@ -172,7 +172,7 @@ impl Universe {
 
     /// Load structures from ESI and 3rd party API
     fn load_structures(&self) -> Result<()> {
-        let structure_ids = self.0.read().esi_client.get_structure_ids()?;
+        let structure_ids = self.0.read().esi_client.get_market_structure_ids()?;
         let structure_regions = get_structure_regions()?;
         let mut result: FnvHashMap<RegionID, FnvHashSet<LocationID>> = FnvHashMap::default();
 

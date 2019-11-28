@@ -81,8 +81,8 @@ impl Client {
         Ok(data)
     }
 
-    pub fn get_structure_ids(&self) -> Result<Vec<types::LocationID>> {
-        let url = "https://esi.evetech.net/v1/universe/structures/".to_string();
+    pub fn get_market_structure_ids(&self) -> Result<Vec<types::LocationID>> {
+        let url = "https://esi.evetech.net/v1/universe/structures/?filter=market".to_string();
         let data = unwrap_json(self.get(&url)?)?;
 
         Ok(data)
