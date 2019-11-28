@@ -39,7 +39,7 @@ impl server::EsiMarkets for MarketServer {
     type GetTypeFuture = future::FutureResult<Response<GetOrdersResponse>, Error>;
     type GetRegionTypeFuture = future::FutureResult<Response<GetOrdersResponse>, Error>;
     type GetRegionTypeUpdateStreamStream =
-        Box<Stream<Item = GetRegionTypeUpdateStreamResponse, Error = Error>>;
+        Box<dyn Stream<Item = GetRegionTypeUpdateStreamResponse, Error = Error>>;
     type GetRegionTypeUpdateStreamFuture =
         future::FutureResult<Response<Self::GetRegionTypeUpdateStreamStream>, Error>;
 

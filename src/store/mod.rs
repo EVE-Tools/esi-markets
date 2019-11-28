@@ -382,7 +382,7 @@ impl Store {
     }
 
     /// Get a new future stream containing updateresults
-    pub fn get_result_stream(&self) -> Box<Stream<Item = Arc<UpdateResult>, Error = ()>> {
+    pub fn get_result_stream(&self) -> Box<dyn Stream<Item = Arc<UpdateResult>, Error = ()>> {
         let store = self.0.write();
         let mut streams = store.update_results_streams.lock();
 
