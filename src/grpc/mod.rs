@@ -94,7 +94,7 @@ pub fn run_server(store: store::Store, grpc_host: &str) {
     let mut core = Core::new().unwrap();
     let reactor = core.handle();
 
-    let new_service = server::EsiMarketsServer::new(MarketServer { store: store });
+    let new_service = server::EsiMarketsServer::new(MarketServer { store });
 
     let h2 = Server::new(new_service, Default::default(), reactor.clone());
 
