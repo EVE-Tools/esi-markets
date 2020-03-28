@@ -13,7 +13,7 @@ blocks:
             - checkout
             - 'echo $DOCKER_PASSWORD | docker login --username "$DOCKER_USERNAME" --password-stdin'
             - "docker build -t esi-markets ."
-            - 'export SHORT_REV="${SEMAPHORE_GIT_SHA:$a:7}"'
+            - 'export SHORT_REV="${SEMAPHORE_GIT_SHA:0:8}"'
             - 'docker tag esi-markets "$DOCKER_USERNAME"/esi-markets:$SHORT_REV'
             - 'docker tag esi-markets "$DOCKER_USERNAME"/esi-markets:latest'
             - 'docker push "$DOCKER_USERNAME"/esi-markets:$SHORT_REV'
