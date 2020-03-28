@@ -4,6 +4,9 @@ stages:
 before_script:
   - docker info
 
+variables:
+  DOCKER_TLS_CERTDIR: "/certs"
+
 build_image:
   stage: docker
   image: docker:19.03.3
