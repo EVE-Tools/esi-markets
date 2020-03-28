@@ -15,7 +15,6 @@ use super::esi::types::*;
 use chrono::prelude::*;
 use chrono::Duration;
 use crossbeam_channel as channel;
-use ctrlc;
 use fnv::FnvHashMap;
 use rand::{thread_rng, Rng};
 
@@ -60,9 +59,9 @@ pub fn run(config: config::Config) -> Result<()> {
     }).expect("Error setting shutdown handler!");
 
     // Launch gRPC server
-    grpc::run_server(order_store, &config.grpc_host);
+    grpc::run_server(order_store, &config.grpc_host).unwrap();
 
-    return Ok(());
+    Ok(())
 }
 
 /// Control scraping of regions in regular intervals
@@ -203,7 +202,8 @@ fn download_region_market(region_id: RegionID,
         let metadata = client.get_orders_metadata(region_id)?;
 
         // Re-schedule self with 3 second safety-margin
-        reschedule_channel.send((region_id, metadata.expires + Duration::seconds(3)));
+        reschedule_channel.send((region_id, metadata.expires + Duration::seconds(3)))
+                          .unwrap();
 
         // Spawn threads for pages
         let mut page_handles: Vec<thread::JoinHandle<Result<Vec<Order>>>> = Vec::new();

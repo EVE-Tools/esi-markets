@@ -1,11 +1,3 @@
-use std;
-
-use bincode;
-use log;
-use reqwest;
-use serde_json;
-use time;
-
 error_chain! {
     foreign_links {
         BincodeError(std::boxed::Box<bincode::ErrorKind>);

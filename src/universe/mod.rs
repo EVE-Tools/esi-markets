@@ -11,8 +11,6 @@ use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use fnv::{FnvHashMap, FnvHashSet};
 use parking_lot::RwLock;
-use reqwest;
-use serde_json;
 
 use super::errors::*;
 use super::esi;

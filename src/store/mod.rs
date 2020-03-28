@@ -267,13 +267,6 @@ impl Store {
                     warn!("Closing result stream due to backpressured client.");
                     true
                 }
-                Err(error) => {
-                    error!(
-                        "Unknown stream error while trying to send update result: {}",
-                        error.to_string()
-                    );
-                    true
-                }
             }
         });
         update_result

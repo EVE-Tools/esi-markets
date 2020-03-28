@@ -64,7 +64,7 @@ impl EsiMarkets for MarketServer {
         mpsc::Receiver<Result<GetRegionTypeUpdateStreamResponse, Status>>;
     async fn get_region_type_update_stream(
         &self,
-        request: Request<()>)
+        _request: Request<()>)
         -> Result<Response<Self::GetRegionTypeUpdateStreamStream>, Status> {
         // Get a new stream, take region_types as they become available and convert
         // the set of store types to a vec of the gRPC types. Then map errors and put stream into a box.

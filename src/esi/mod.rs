@@ -8,9 +8,6 @@ use std::thread;
 use chrono::prelude::*;
 use chrono::Duration;
 use parking_lot::RwLock;
-use reqwest;
-use serde;
-use serde_json;
 
 use super::errors;
 use super::errors::*;
@@ -294,7 +291,7 @@ fn header_as_datetime(name: &str, resp: &reqwest::blocking::Response) -> Result<
 }
 
 /// Parse JSON via string for performance reasons, see: <https://github.com/serde-rs/json/issues/160>
-fn unwrap_json<T>(mut resp: reqwest::blocking::Response) -> Result<T>
+fn unwrap_json<T>(resp: reqwest::blocking::Response) -> Result<T>
     where T: serde::de::DeserializeOwned
 {
     let body = resp.text()?;
