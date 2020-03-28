@@ -2,7 +2,7 @@ version: v1.0
 name: Docker
 agent:
   machine:
-    type: e1-standard-2
+    type: e1-standard-8
     os_image: ubuntu1804
 blocks:
   - name: Build and push
@@ -12,7 +12,7 @@ blocks:
           commands:
             - checkout
             - 'echo $DOCKER_PASSWORD | docker login --username "$DOCKER_USERNAME" --password-stdin'
-            - 'docker build -t esi-markets .'
+            - "docker build -t esi-markets ."
             - 'export SHORT_REV="${SEMAPHORE_GIT_SHA:$a:7}"'
             - 'docker tag esi-markets "$DOCKER_USERNAME"/esi-markets:$SHORT_REV'
             - 'docker tag esi-markets "$DOCKER_USERNAME"/esi-markets:latest'
