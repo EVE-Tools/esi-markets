@@ -1,7 +1,7 @@
 FROM rustlang/rust:nightly AS build
 
 COPY . .
-RUN cargo build -j 1 --verbose --release
+RUN cargo build --verbose --release
 
 FROM debian:stretch-slim
 

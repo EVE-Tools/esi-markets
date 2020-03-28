@@ -1,0 +1,19 @@
+before_script:
+  - docker info
+
+build_image:
+  stage: dockerize
+  image: docker:19.03.3
+  services:
+    - docker:19.03.3-dind
+  tags:
+    - dind
+    - docker
+  script:
+    - 'echo $DOCKER_PASSWORD | docker login --username "$DOCKER_USERNAME" --password-stdin'
+    - "docker build -t esi-markets ."
+    - 'export SHORT_REV="${CI_COMMIT_SHA:0:8}"'
+    - 'docker tag esi-markets "$DOCKER_USERNAME"/esi-markets:$SHORT_REV'
+    - 'docker tag esi-markets "$DOCKER_USERNAME"/esi-markets:latest'
+    - 'docker push "$DOCKER_USERNAME"/esi-markets:$SHORT_REV'
+    - 'docker push "$DOCKER_USERNAME"/esi-markets:latest'
