@@ -35,8 +35,7 @@ futures = "0.3"
 async-stream = "0.2"
 
 [build-dependencies]
-tonic-build = "0.1"
-features = []
+tonic-build = { version = "0.1", default-features = false, features = ["transport"] }
 
 [dependencies.ctrlc]
 version = "3.1"
