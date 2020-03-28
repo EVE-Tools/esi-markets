@@ -11,6 +11,7 @@ error_chain! {
         BincodeError(std::boxed::Box<bincode::ErrorKind>);
         LogError(log::SetLoggerError);
         ReqError(reqwest::Error);
+        ReqHeaderError(reqwest::header::ToStrError);
         SerdeJsonError(serde_json::Error);
         IntError(std::num::ParseIntError);
         IOError(std::io::Error);

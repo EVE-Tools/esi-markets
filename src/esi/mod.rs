@@ -9,7 +9,6 @@ use chrono::prelude::*;
 use chrono::Duration;
 use parking_lot::RwLock;
 use reqwest;
-use reqwest::header::{Authorization, Bearer, Connection, UserAgent};
 use serde;
 use serde_json;
 
@@ -52,14 +51,19 @@ pub struct Client(Arc<RwLock<InnerClient>>);
 
 #[derive(Debug)]
 struct InnerClient {
-    http: reqwest::Client,
+    http: reqwest::blocking::Client,
     locked_until: DateTime<Utc>,
     oauth_context: OAuthContext,
 }
 
 impl Client {
     pub fn new(oauth_context: OAuthContext) -> Client {
-        let inner_client = InnerClient { http: reqwest::Client::new(),
+        let client = reqwest::blocking::Client::builder().max_idle_per_host(10)
+                                                         .user_agent(USER_AGENT)
+                                                         .gzip(true)
+                                                         .build()
+                                                         .unwrap();
+        let inner_client = InnerClient { http: client,
                                          locked_until: Utc::now(),
                                          oauth_context };
 
@@ -107,9 +111,9 @@ impl Client {
 
         self.handle_get_response(response)?;
 
-        let pages = header_as_number("X-Pages", response)?;
-        let expires = header_as_datetime("Expires", response)?;
-        let last_modified = header_as_datetime("Last-Modified", response)?;
+        let pages = header_as_number("x-pages", response)?;
+        let expires = header_as_datetime("expires", response)?;
+        let last_modified = header_as_datetime("last-modified", response)?;
 
         Ok(MarketMetadata { pages,
                             expires,
@@ -121,7 +125,7 @@ impl Client {
         let url = format!("https://esi.evetech.net/v1/markets/structures/{}/?page=1",
                           structure_id);
         let response = &self.get_auth(&url)?;
-        let forbidden = response.status() == reqwest::StatusCode::Forbidden;
+        let forbidden = response.status() == reqwest::StatusCode::FORBIDDEN;
 
         if forbidden {
             bail!(errors::ErrorKind::HTTPForbiddenError(format!("Structure {} is forbidden!",
@@ -130,9 +134,9 @@ impl Client {
 
         self.handle_get_response(response)?;
 
-        let pages = header_as_number("X-Pages", response)?;
-        let expires = header_as_datetime("Expires", response)?;
-        let last_modified = header_as_datetime("Last-Modified", response)?;
+        let pages = header_as_number("x-pages", response)?;
+        let expires = header_as_datetime("expires", response)?;
+        let last_modified = header_as_datetime("last-modified", response)?;
 
         Ok(MarketMetadata { pages,
                             expires,
@@ -140,14 +144,11 @@ impl Client {
     }
 
     /// Simple HTTP GET helper for common requests
-    fn get(&self, url: &str) -> Result<reqwest::Response> {
+    fn get(&self, url: &str) -> Result<reqwest::blocking::Response> {
         self.limit_errors()?;
         let client = &self.0.read().http.clone();
 
-        let resp = client.get(url)
-                         .header(Connection::keep_alive())
-                         .header(UserAgent::new(USER_AGENT))
-                         .send()?;
+        let resp = client.get(url).header("connection", "keep-alive").send()?;
 
         self.handle_get_response(&resp)?;
 
@@ -155,18 +156,16 @@ impl Client {
     }
 
     /// Simple HTTP GET helper for common requests requiring authentication
-    fn get_auth(&mut self, url: &str) -> Result<reqwest::Response> {
+    fn get_auth(&mut self, url: &str) -> Result<reqwest::blocking::Response> {
         self.limit_errors()?;
         self.check_auth()?;
 
         let client = &self.0.read().http.clone();
         let auth_ctx = self.0.read().oauth_context.clone();
-        let auth_header = Authorization(Bearer { token: auth_ctx.access_token.unwrap() });
 
         let resp = client.get(url)
-                         .header(Connection::keep_alive())
-                         .header(UserAgent::new(USER_AGENT))
-                         .header(auth_header)
+                         .header("connection", "keep-alive")
+                         .bearer_auth(auth_ctx.access_token.unwrap())
                          .send()?;
 
         self.handle_get_response(&resp)?;
@@ -193,6 +192,7 @@ impl Client {
                    .signed_duration_since(Utc::now())
                < Duration::seconds(60)
             {
+                info!("Refreshing auth token.");
                 let client_id = lock.oauth_context.client_id.clone();
                 let secret_key = lock.oauth_context.secret_key.clone();
 
@@ -203,7 +203,6 @@ impl Client {
                 // Load auth, acquire write lock, check again, then write new data
                 let response = lock.http
                                    .post("https://login.eveonline.com/v2/oauth/token")
-                                   .header(UserAgent::new(USER_AGENT))
                                    .basic_auth(client_id, Some(secret_key))
                                    .form(&body)
                                    .send()?;
@@ -238,11 +237,11 @@ impl Client {
 
     /// Inspect response for errors, especially for ESI-blocks
     // FIXME: properly handle non-200 responses!
-    fn handle_get_response(&self, resp: &reqwest::Response) -> Result<()> {
-        let errors_remaining = header_as_number("X-ESI-Error-Limit-Remain", resp)?;
-        let reset_seconds = header_as_number("X-ESI-Error-Limit-Reset", resp)?;
+    fn handle_get_response(&self, resp: &reqwest::blocking::Response) -> Result<()> {
+        let errors_remaining = header_as_number("x-esi-error-limit-remain", resp)?;
+        let reset_seconds = header_as_number("x-esi-error-limit-reset", resp)?;
         let reset_window_at = Utc::now() + Duration::seconds(reset_seconds.into());
-        let limit_present = resp.headers().get_raw("X-ESI-Error-Limited").is_some();
+        let limit_present = resp.headers().get("x-esi-error-limited").is_some();
         let status_code = resp.status().as_u16();
 
         // Throttle request
@@ -257,6 +256,8 @@ impl Client {
             bail!(errors::ErrorKind::ESIErrorLimitError("Request blocked by ESI: Server returned code 420. Throttling requests.".to_owned()));
         } else if errors_remaining < 10 {
             warn!("Remaining ESI error limit below watermark: Throttling requests.");
+        } else if status_code != 200 && status_code != 403 {
+            bail!(errors::ErrorKind::ESIErrorLimitError(format!("ESI returned error: {:?}", resp)));
         }
 
         Ok(())
@@ -264,41 +265,36 @@ impl Client {
 }
 
 /// Try to return an arbitrary header as u32
-fn header_as_number(name: &str, resp: &reqwest::Response) -> Result<u32> {
-    let num = str::from_utf8(resp.headers()
-                                 .get_raw(name)
-                                 .ok_or_else(|| {
-                                     Error::from(format!("Response missing the {} header", name))
-                                 })?
-                                 .one()
-                                 .ok_or_else(|| {
-                                     Error::from(format!("Could not get contents of {} header",
-                                                         name))
-                                 })?).chain_err(|| format!("Failed to get {} header", name))?
-                                     .parse()
-                                     .chain_err(|| format!("Could not parse {} header", name))?;
+fn header_as_number(name: &str, resp: &reqwest::blocking::Response) -> Result<u32> {
+    let header = resp.headers()
+                     .get(name)
+                     .ok_or_else(|| Error::from(format!("Response missing the {} header", name)))?
+                     .to_str()?;
+
+    let num = header.parse()
+                    .chain_err(|| format!("Could not parse {} header", name))?;
 
     Ok(num)
 }
 
-/// Try to return an arbitrary header as datetime
-fn header_as_datetime(name: &str, resp: &reqwest::Response) -> Result<DateTime<Utc>> {
-    let num = DateTime::parse_from_rfc2822(
-        str::from_utf8(resp
-            .headers()
-                .get_raw(name)
-                .ok_or_else(|| Error::from(format!("Response missing the {} header", name)))?
-                .one()
-                .ok_or_else(|| Error::from(format!("Could not get contents of {} header", name)))?)
-            .chain_err(|| format!("Failed to get {} header", name))?)
-        .chain_err(|| format!("Could not parse {} header", name))?
-        .with_timezone(&Utc);
+/// Try to return an arbitrary header as UTC datetime
+fn header_as_datetime(name: &str, resp: &reqwest::blocking::Response) -> Result<DateTime<Utc>> {
+    let header = resp.headers()
+                     .get(name)
+                     .ok_or_else(|| Error::from(format!("Response missing the {} header", name)))?
+                     .to_str()?;
 
-    Ok(num)
+    let timestamp = DateTime::parse_from_rfc2822(header).chain_err(|| {
+                                                            format!("Could not parse {} header",
+                                                                    name)
+                                                        })?;
+    let utc_timestamp = timestamp.with_timezone(&Utc);
+
+    Ok(utc_timestamp)
 }
 
 /// Parse JSON via string for performance reasons, see: <https://github.com/serde-rs/json/issues/160>
-fn unwrap_json<T>(mut resp: reqwest::Response) -> Result<T>
+fn unwrap_json<T>(mut resp: reqwest::blocking::Response) -> Result<T>
     where T: serde::de::DeserializeOwned
 {
     let body = resp.text()?;

@@ -62,22 +62,23 @@ mod prost_date {
     use chrono::Utc;
     use prost_types::Timestamp;
     use serde::{self, Deserialize, Deserializer, Serializer};
-    use std::time::{Duration, SystemTime};
+    use std::convert::TryFrom;
+    use std::time;
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Timestamp>, D::Error>
         where D: Deserializer<'de>
     {
         let s = String::deserialize(deserializer)?;
         let d = DateTime::parse_from_rfc3339(&s).map_err(serde::de::Error::custom)?;
-        let st = SystemTime::from(d);
+        let st = time::SystemTime::from(d);
         Ok(Some(Timestamp::from(st)))
     }
 
     pub fn serialize<S>(date: &Option<Timestamp>, serializer: S) -> Result<S::Ok, S::Error>
         where S: Serializer
     {
-        let date = date.clone().unwrap();
-        let st: Result<SystemTime, Duration> = From::from(date);
+        let a: Timestamp = date.clone().unwrap();
+        let st: Result<time::SystemTime, time::Duration> = TryFrom::try_from(a);
         let st = st.unwrap();
         let rfc_string = DateTime::<Utc>::from(st).to_rfc3339();
 

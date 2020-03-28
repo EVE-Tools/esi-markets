@@ -6,7 +6,6 @@ use super::store;
 use super::universe;
 
 use std::process;
-use std::sync::Arc;
 use std::thread;
 use std::time;
 use std::time::Duration as StandardDuration;
@@ -63,7 +62,7 @@ pub fn run(config: config::Config) -> Result<()> {
     // Launch gRPC server
     grpc::run_server(order_store, &config.grpc_host);
 
-    Ok(())
+    return Ok(());
 }
 
 /// Control scraping of regions in regular intervals
@@ -94,7 +93,7 @@ fn start_schedule_loop(client: esi::Client, uni: universe::Universe, order_store
 
         loop {
             select! {
-                recv(region_update) => {
+                recv(region_update) -> _message => {
                     let regions = uni.get_market_regions();
                     for region in regions {
                         let random: i64 = rng.gen_range(0, 300);
@@ -102,7 +101,7 @@ fn start_schedule_loop(client: esi::Client, uni: universe::Universe, order_store
                         schedule.entry(region).or_insert(random_time);
                     }
                 },
-                recv(run_regions) => {
+                recv(run_regions) -> _message => {
                     let now = &Utc::now();
                     let mut fetch: Vec<RegionID> = Vec::new();
 
@@ -119,8 +118,8 @@ fn start_schedule_loop(client: esi::Client, uni: universe::Universe, order_store
                         update_region(region, client.clone(), uni.clone(), order_store.clone(), send_reschedule.clone());
                     }
                 },
-                recv(receive_reschedule, data) => {
-                    if let Some((region_id, run_at)) = data {
+                recv(receive_reschedule) -> data => {
+                    if let Ok((region_id, run_at)) = data {
                         schedule.insert(region_id, run_at);
                     }
                 },
@@ -137,7 +136,7 @@ fn update_region(region_id: RegionID,
                  uni: universe::Universe,
                  mut order_store: store::Store,
                  reschedule_channel: channel::Sender<(RegionID, DateTime<Utc>)>)
-                 -> thread::JoinHandle<Result<Arc<store::UpdateResult>>> {
+                 -> thread::JoinHandle<Result<store::UpdateResult>> {
     thread::spawn(move || {
         let before_download = Instant::now();
         let orders = match download_region(region_id, client, uni, reschedule_channel) {
@@ -231,13 +230,13 @@ fn download_region_market(region_id: RegionID,
     })
 }
 
-/// Download region page (retry 3 times)
+/// Download region page (retry 5 times)
 fn download_region_market_page(region_id: RegionID,
                                client: esi::Client,
                                page: u32)
                                -> thread::JoinHandle<Result<Vec<Order>>> {
     thread::spawn(move || {
-        let mut tries_remaining = 3;
+        let mut tries_remaining = 5;
         let mut data: Result<Vec<Order>> = Ok(Vec::new());
 
         while tries_remaining > 0 {
@@ -249,7 +248,7 @@ fn download_region_market_page(region_id: RegionID,
                 break;
             }
 
-            thread::sleep(time::Duration::from_millis(1_000));
+            thread::sleep(time::Duration::from_millis(500));
         }
 
         data

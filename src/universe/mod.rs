@@ -76,7 +76,7 @@ impl Universe {
 
             loop {
                 select! {
-                    recv(region_update) => {
+                    recv(region_update) -> _message => {
                         let clone = clone.clone();
                         thread::spawn(move || {
                             match clone.load_regions() {
@@ -87,13 +87,13 @@ impl Universe {
                             }
                         });
                     },
-                    recv(blacklist_reset) => {
+                    recv(blacklist_reset) -> _message => {
                         let clone = clone.clone();
                         thread::spawn(move || {
                             clone.clear_blacklist();
                         });
                     },
-                    recv(structure_update) => {
+                    recv(structure_update) -> _message => {
                         let clone = clone.clone();
                         thread::spawn(move || {
                             match clone.load_structures() {
@@ -104,7 +104,7 @@ impl Universe {
                             }
                         });
                     },
-                    recv(save_blacklist) => {
+                    recv(save_blacklist) -> _message => {
                         let clone = clone.clone();
                         thread::spawn(move || {
                             match clone.persist_blacklist() {
@@ -244,9 +244,10 @@ impl Universe {
 }
 
 fn get_structure_regions() -> Result<FnvHashMap<LocationID, RegionID>> {
-    let mut resp = reqwest::Client::new().get("https://stop.hammerti.me.uk/api/structure/all")
-                                         .header(reqwest::header::UserAgent::new(esi::USER_AGENT))
-                                         .send()?;
+    let mut resp =
+        reqwest::blocking::Client::new().get("https://stop.hammerti.me.uk/api/structure/all")
+                                        .header("user-agent", esi::USER_AGENT)
+                                        .send()?;
 
     if !resp.status().is_success() {
         bail!("could not load structures from 3rd party API - non-200 HTTP status!")

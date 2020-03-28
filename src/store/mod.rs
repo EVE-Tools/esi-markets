@@ -16,14 +16,20 @@ use flate2::Compression;
 use fnv::FnvHashMap;
 use fnv::FnvHashSet;
 use fnv::FnvHasher;
-use futures::sync::mpsc::{channel, Sender};
-use futures::{Sink, Stream};
-use parking_lot::{Mutex, RwLock, RwLockWriteGuard};
+use parking_lot::{RwLock, RwLockWriteGuard};
 use prost::Message;
 use prost_types::Timestamp;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
 
 use super::errors::*;
 use super::esi::types::*;
+
+// FIXME: This is gRPC specifics leaking into the store, I cut this corner as I did not want to map streams
+use crate::grpc::esi_markets::GetRegionTypeUpdateStreamResponse;
+
+// Stream item type
+pub type StreamItem = ::std::result::Result<GetRegionTypeUpdateStreamResponse, tonic::Status>;
 
 pub const STORE_PATH: &str = "cache/store";
 pub const TEMP_STORE_PATH: &str = "cache/store.part";
@@ -56,7 +62,7 @@ struct InnerStore {
     regions: FnvHashMap<RegionID, FnvHashSet<OrderID>>,
     types: FnvHashMap<TypeID, FnvHashSet<OrderID>>,
     region_types: FnvHashMap<RegionType, FnvHashSet<OrderID>>,
-    update_results_streams: Arc<Mutex<Vec<Sender<Arc<UpdateResult>>>>>,
+    update_results_streams: Vec<Sender<StreamItem>>,
 }
 
 /// Simple order + history
@@ -75,7 +81,7 @@ impl Store {
                                  regions: FnvHashMap::default(),
                                  types: FnvHashMap::default(),
                                  region_types: FnvHashMap::default(),
-                                 update_results_streams: Arc::new(Mutex::new(vec![])) };
+                                 update_results_streams: vec![] };
 
         let retval = Store(Arc::new(RwLock::new(inner)));
 
@@ -158,10 +164,7 @@ impl Store {
         Ok(())
     }
     /// Store multiple orders in the store. Update if existing
-    pub fn store_region(&mut self,
-                        region_id: RegionID,
-                        orders: TaggedOrderVec)
-                        -> Arc<UpdateResult> {
+    pub fn store_region(&mut self, region_id: RegionID, orders: TaggedOrderVec) -> UpdateResult {
         // Acquire write lock
         // Iterate over orders, serialize (protobuf, append seen_at field later) and hash (build StoreObjects) -> rayon
         //  Check if hash is present
@@ -232,10 +235,10 @@ impl Store {
                 region_types.insert((region_id, order.type_id));
 
                 store.orders.insert(order.order_id,
-                                    StoreObject { hash: hash,
+                                    StoreObject { hash,
                                                   history: vec![seen_blob.clone()],
                                                   order: seen_blob,
-                                                  region_id: region_id,
+                                                  region_id,
                                                   type_id: order.type_id });
 
                 add_to_indices(&mut store, order.order_id, order.type_id, region_id);
@@ -246,40 +249,33 @@ impl Store {
         region_types.extend(rt_closed.iter());
 
         // Push result to stream and return
-        let update_result = Arc::new(UpdateResult { is_first_run,
-                                                    new,
-                                                    updated,
-                                                    unaffected,
-                                                    closed,
-                                                    region_types });
+        let update_result = UpdateResult { is_first_run,
+                                           new,
+                                           updated,
+                                           unaffected,
+                                           closed,
+                                           region_types };
 
-        let mut streams = store.update_results_streams.lock();
-        streams.drain_filter(|stream| {
-                   match stream.try_send(update_result.clone()) {
-                       Ok(()) => false,
-                       Err(ref error) if error.is_disconnected() => {
-                           debug!("Result stream client disconnected.");
-                           true
-                       }
-                       Err(ref error) if error.is_full() => {
-                           warn!("Closing result stream due to backpressured client.");
-
-                           // Close backpressured stream as consumer is not able to keep up
-                           let close_result = stream.close();
-
-                           if let Err(error) = close_result {
-                               error!("Error while closing result stream: {}", error.to_string());
-                           }
-
-                           true
-                       }
-                       Err(error) => {
-                           error!("Unknown stream error while trying to send update result: {}",
-                                  error.to_string());
-                           true
-                       }
-                   }
-               });
+        store.update_results_streams.drain_filter(|stream| {
+            match stream.try_send(convert_for_stream(&update_result)) {
+                Ok(()) => false,
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    debug!("Result stream client disconnected.");
+                    true
+                }
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    warn!("Closing result stream due to backpressured client.");
+                    true
+                }
+                Err(error) => {
+                    error!(
+                        "Unknown stream error while trying to send update result: {}",
+                        error.to_string()
+                    );
+                    true
+                }
+            }
+        });
         update_result
     }
 
@@ -288,7 +284,7 @@ impl Store {
         // Acquire read lock
         // Get order's history from store
         // Release read lock
-        let store = &self.0.read();
+        let store = self.0.read();
 
         let mut orders: Vec<OrderBlob> = Vec::new();
 
@@ -309,7 +305,7 @@ impl Store {
         // Get regions[region_id]
         // Get OIDs from orders, concat to Vec
         // Release read lock
-        let store = &self.0.read();
+        let store = self.0.read();
         let oids_region = store.regions.get(&region_id);
 
         let mut orders: Vec<OrderBlob> = Vec::new();
@@ -335,7 +331,7 @@ impl Store {
         // Get types[region_id]
         // Get OIDs from orders, concat to Vec
         // Release read lock
-        let store = &self.0.read();
+        let store = self.0.read();
         let oids_type = store.types.get(&type_id);
 
         let mut orders: Vec<OrderBlob> = Vec::new();
@@ -361,7 +357,7 @@ impl Store {
         // Get region_types[region_type]
         // Get OIDs from orders, concat to Vec
         // Release read lock
-        let store = &self.0.read();
+        let store = self.0.read();
         let oids_region_type = store.region_types.get(&region_type);
 
         let mut orders: Vec<OrderBlob> = Vec::new();
@@ -382,16 +378,15 @@ impl Store {
     }
 
     /// Get a new future stream containing updateresults
-    pub fn get_result_stream(&self) -> Box<dyn Stream<Item = Arc<UpdateResult>, Error = ()>> {
-        let store = self.0.write();
-        let mut streams = store.update_results_streams.lock();
+    pub fn get_result_stream(&self) -> mpsc::Receiver<StreamItem> {
+        let mut store = self.0.write();
 
         debug!("Result stream client connected. Now there are {} active clients.",
-               streams.len() + 1);
+               store.update_results_streams.len() + 1);
 
-        let (sender, receiver) = channel::<Arc<UpdateResult>>(10);
-        streams.push(sender);
-        Box::new(receiver)
+        let (sender, receiver) = mpsc::channel::<StreamItem>(10);
+        store.update_results_streams.push(sender);
+        receiver
     }
 }
 
@@ -475,4 +470,16 @@ fn prune_region(store: &mut RwLockWriteGuard<InnerStore>,
     }
 
     (affected_region_types, removed_ids)
+}
+
+/// Convert between inetrnal and stream types
+fn convert_for_stream(result: &UpdateResult) -> StreamItem {
+    let mapped_region_tyes =
+        result.region_types
+              .iter()
+              .map(|region_type| crate::grpc::esi_markets::RegionType { region_id: region_type.0,
+                                                                        type_id: region_type.1 })
+              .collect();
+
+    Ok(GetRegionTypeUpdateStreamResponse { region_types: mapped_region_tyes })
 }
